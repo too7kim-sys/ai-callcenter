@@ -123,6 +123,46 @@
   .start button { padding: 12px; width: 100%; }
   .hint { font-size: 11px; color: #94a3b8; text-align: center; padding: 8px; }
   .typing .bubble { color: #94a3b8; font-style: italic; }
+  .icon-btn {
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    width: 46px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #475569;
+    padding: 0;
+  }
+  .icon-btn svg { width: 21px; height: 21px; }
+  .icon-btn.listening {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #fff;
+    animation: pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+  .header-btn {
+    background: rgba(255, 255, 255, .22);
+    border: none;
+    border-radius: 8px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #fff;
+    padding: 0;
+  }
+  .header-btn svg { width: 18px; height: 18px; }
+  .header-btn.off { opacity: .4; }
+  @media (max-width: 480px) {
+    .chat { height: 100vh; max-height: 100vh; border-radius: 0; }
+  }
 </style>
 </head>
 <body>
@@ -132,7 +172,16 @@
       <h1>AI 고객센터</h1>
       <div class="sub">무엇이든 문의해 주세요</div>
     </div>
-    <span class="badge" id="mode-badge">·</span>
+    <div class="header-actions">
+      <button class="header-btn" id="tts-btn" title="봇 음성 답변 켜기/끄기" aria-label="봇 음성 답변 켜기/끄기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11 5 6 9H3v6h3l5 4z" />
+          <path d="M16 9a4 4 0 0 1 0 6" />
+          <path d="M19 6.5a8 8 0 0 1 0 11" />
+        </svg>
+      </button>
+      <span class="badge" id="mode-badge">·</span>
+    </div>
   </header>
 
   <div class="start" id="start-view">
@@ -143,6 +192,13 @@
 
   <div class="messages" id="messages" style="display:none"></div>
   <div class="composer" id="composer" style="display:none">
+    <button class="icon-btn" id="mic-btn" title="음성으로 말하기" aria-label="음성으로 말하기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="2" width="6" height="12" rx="3" />
+        <path d="M5 11a7 7 0 0 0 14 0" />
+        <line x1="12" y1="18" x2="12" y2="22" />
+      </svg>
+    </button>
     <input id="msg-input" placeholder="메시지를 입력하세요" autocomplete="off" />
     <button id="send-btn">전송</button>
   </div>
@@ -188,6 +244,7 @@ function appendMessage(msg) {
     `<div class="bubble">${escapeHtml(msg.content)}</div>`;
   $("messages").appendChild(row);
   scrollDown();
+  if (msg.role === "ai" || msg.role === "agent") speak(msg.content);
 }
 
 function scrollDown() {
@@ -243,6 +300,7 @@ async function startChat() {
   greet.textContent = `${name}님, 안녕하세요! 무엇을 도와드릴까요?`;
   $("messages").appendChild(greet);
 
+  warmUpTts(); // iOS 등에서 사용자 제스처 내에 음성 엔진을 활성화
   $("msg-input").focus();
   startPolling();
 }
@@ -294,11 +352,103 @@ function startPolling() {
   }, 4000);
 }
 
+// ===== 음성 상담 (Web Speech API) =====
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const TTS_OK = "speechSynthesis" in window;
+let recognition = null;
+let listening = false;
+let gotSpeech = false;
+let ttsEnabled = TTS_OK;
+
+function showNotice(text) {
+  const n = document.createElement("div");
+  n.className = "notice";
+  n.textContent = text;
+  $("messages").appendChild(n);
+  scrollDown();
+}
+
+// --- 음성 재생 (TTS): 봇·상담원 답변을 읽어준다 ---
+function speak(text) {
+  if (!ttsEnabled || !TTS_OK || !text) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ko-KR";
+    window.speechSynthesis.speak(u);
+  } catch (e) { /* 무시 */ }
+}
+function warmUpTts() {
+  if (!TTS_OK) return;
+  try {
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    window.speechSynthesis.speak(u);
+  } catch (e) { /* 무시 */ }
+}
+function updateTtsBtn() {
+  $("tts-btn").classList.toggle("off", !ttsEnabled);
+  $("tts-btn").title = ttsEnabled ? "봇 음성 답변 끄기" : "봇 음성 답변 켜기";
+}
+function toggleTts() {
+  ttsEnabled = !ttsEnabled;
+  if (!ttsEnabled && TTS_OK) window.speechSynthesis.cancel();
+  updateTtsBtn();
+}
+
+// --- 음성 입력 (STT): 고객이 말하면 텍스트로 변환해 전송 ---
+function updateMicBtn() {
+  $("mic-btn").classList.toggle("listening", listening);
+  $("msg-input").placeholder = listening ? "듣고 있어요…" : "메시지를 입력하세요";
+}
+function toggleMic() {
+  if (!recognition) return;
+  if (listening) { recognition.stop(); return; }
+  if (TTS_OK) window.speechSynthesis.cancel(); // 봇 음성과의 에코 방지
+  $("msg-input").value = "";
+  try { recognition.start(); } catch (e) { /* 이미 시작됨 */ }
+}
+function setupVoice() {
+  if (!TTS_OK) $("tts-btn").style.display = "none";
+  else updateTtsBtn();
+
+  if (!SpeechRec) {  // 음성 인식 미지원 브라우저 → 텍스트 입력만
+    $("mic-btn").style.display = "none";
+    return;
+  }
+  recognition = new SpeechRec();
+  recognition.lang = "ko-KR";
+  recognition.interimResults = true;
+  recognition.continuous = false;
+  recognition.onstart = () => { listening = true; gotSpeech = false; updateMicBtn(); };
+  recognition.onresult = (event) => {
+    let transcript = "";
+    for (let i = 0; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
+    }
+    gotSpeech = true;
+    $("msg-input").value = transcript;
+  };
+  recognition.onerror = (event) => {
+    if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      showNotice("마이크 사용 권한이 필요합니다. 브라우저 설정을 확인해 주세요.");
+    }
+  };
+  recognition.onend = () => {
+    listening = false;
+    updateMicBtn();
+    if (gotSpeech && $("msg-input").value.trim()) sendMessage(); // 인식 종료 시 자동 전송
+  };
+}
+
 $("start-btn").addEventListener("click", startChat);
 $("name-input").addEventListener("keydown", (e) => { if (e.key === "Enter") startChat(); });
 $("send-btn").addEventListener("click", sendMessage);
 $("msg-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendMessage(); });
+$("mic-btn").addEventListener("click", toggleMic);
+$("tts-btn").addEventListener("click", toggleTts);
 
+setupVoice();
 loadConfig();
 </script>
 </body>
