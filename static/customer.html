@@ -163,11 +163,13 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+const MODE_LABEL = { claude: "Claude 연결됨", ollama: "Ollama 연결됨", mock: "데모 모드" };
+
 async function loadConfig() {
   try {
     const res = await fetch(API + "/api/config");
     const cfg = await res.json();
-    $("mode-badge").textContent = cfg.ai_mode === "live" ? "AI 연결됨" : "데모 모드";
+    $("mode-badge").textContent = MODE_LABEL[cfg.ai_mode] || "데모 모드";
   } catch (e) {
     $("mode-badge").textContent = "오프라인";
   }

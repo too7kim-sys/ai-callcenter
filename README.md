@@ -1,8 +1,9 @@
 # AI 콜센터
 
 FastAPI + SQLite 기반의 독립 실행형 AI 콜센터 애플리케이션입니다.
-실제 Claude API(`claude-opus-4-7`)와 연동되며, API 키가 없으면 자동으로
-모의(mock) 응답으로 동작하여 키 없이도 전체 기능을 체험할 수 있습니다.
+AI 제공자로 **Claude API**(`claude-opus-4-7`) 또는 **로컬 Ollama** 를 선택할 수
+있으며, 둘 다 사용할 수 없으면 자동으로 모의(mock) 응답으로 동작하여 키 없이도
+전체 기능을 체험할 수 있습니다.
 
 ## AI 기능 4종
 
@@ -35,11 +36,33 @@ python run.py
 - 고객 채팅: <http://localhost:8000/>
 - 상담원 콘솔: <http://localhost:8000/agent>
 
-## 동작 모드
+## 동작 모드 (AI 제공자)
 
-- `ANTHROPIC_API_KEY` 가 설정되어 있으면 **실제 Claude API**(`claude-opus-4-7`)를 호출합니다.
-- 키가 없거나 API 호출이 실패하면 **모의(mock) 응답**으로 자동 폴백합니다.
-- 현재 모드는 각 화면 상단 배지에서 확인할 수 있습니다 (`AI 연결됨` / `데모 모드`).
+`.env` 의 `AI_PROVIDER` 로 AI 제공자를 선택합니다.
+
+| `AI_PROVIDER` | 동작 |
+| --- | --- |
+| `auto` (기본값) | Claude 키가 있으면 Claude, 없으면 Ollama, 둘 다 없으면 mock |
+| `claude` | 실제 Claude API (`claude-opus-4-7`) |
+| `ollama` | 로컬 Ollama 서버 |
+| `mock` | 모의 응답만 사용 |
+
+- 어떤 제공자를 쓰더라도 호출이 실패하면 **모의(mock) 응답**으로 자동 폴백합니다.
+- 현재 제공자는 각 화면 상단 배지에서 확인할 수 있습니다 (`Claude 연결됨` / `Ollama 연결됨` / `데모 모드`).
+
+### Ollama 사용 방법
+
+1. [Ollama](https://ollama.com) 설치 후 모델을 받습니다. 예) `ollama pull llama3.1`
+2. `.env` 에 다음을 설정합니다.
+   ```
+   AI_PROVIDER=ollama
+   OLLAMA_BASE_URL=http://localhost:11434
+   OLLAMA_MODEL=llama3.1
+   ```
+3. Ollama 서버가 떠 있으면(`ollama serve`) 앱이 자동으로 연동됩니다.
+
+> 구조화 출력이 필요한 기능(감정 분석·요약·추천)은 Ollama 의 `format: "json"` 옵션을
+> 사용해 유효한 JSON 응답을 받습니다.
 
 ## 프로젝트 구조
 

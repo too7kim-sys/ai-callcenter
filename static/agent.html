@@ -279,11 +279,14 @@ const STATUS_LABEL = { open: "진행중", escalated: "에스컬레이션", close
 const RISK_LABEL = { low: "위험 낮음", medium: "위험 보통", high: "위험 높음" };
 const WHO = { customer: "고객", ai: "AI 상담봇", agent: "상담원" };
 
+const MODE_LABEL = { claude: "Claude", ollama: "Ollama", mock: "데모 모드" };
+
 async function loadConfig() {
   try {
     const cfg = await (await fetch(API + "/api/config")).json();
+    const name = MODE_LABEL[cfg.ai_mode] || "데모 모드";
     $("mode-badge").textContent =
-      (cfg.ai_mode === "live" ? "AI 연결됨 · " : "데모 모드 · ") + cfg.model;
+      cfg.ai_mode === "mock" ? name : name + " · " + cfg.model;
   } catch (e) {
     $("mode-badge").textContent = "오프라인";
   }
@@ -483,7 +486,8 @@ async function runRecommend() {
 
 function renderRecommendations(recs, source) {
   const card = $("card-recommend");
-  let html = `<h3>추천 답변 <span class="src">${source === "live" ? "AI" : "데모"}</span></h3>`;
+  const SRC = { claude: "Claude", ollama: "Ollama", mock: "데모" };
+  let html = `<h3>추천 답변 <span class="src">${SRC[source] || "데모"}</span></h3>`;
   if (!recs.length) {
     html += `<p class="muted">추천할 답변이 없습니다.</p>`;
   } else {

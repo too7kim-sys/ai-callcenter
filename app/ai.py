@@ -11,12 +11,17 @@
 """
 import json
 import logging
+import time
+import urllib.request
 
 from . import config, faq
 
 logger = logging.getLogger("ai_callcenter.ai")
 
 _client = None  # anthropic.Anthropic 인스턴스 (지연 생성)
+_ollama_cache = {"available": None, "checked_at": 0.0}  # Ollama 가용성 캐시
+
+OLLAMA_TIMEOUT = 120  # 초 (로컬 모델 생성은 느릴 수 있음)
 
 VALID_SENTIMENT = {"긍정", "중립", "부정", "매우 부정"}
 VALID_RISK = {"low", "medium", "high"}
@@ -104,26 +109,27 @@ FAQ 지식베이스:
 # ====================================================================
 
 def get_ai_mode():
-    return config.AI_MODE
+    """현재 동작 중인 AI 제공자: claude | ollama | mock."""
+    return _resolve_provider()
 
 
 def generate_reply(history):
     """AI 상담 챗봇: 대화 이력 기반 멀티턴 응답.
 
     history: [{"role": "customer|ai|agent", "content": str}, ...]
-    반환: {"reply": str, "source": "live"|"mock"}
+    반환: {"reply": str, "source": "claude"|"ollama"|"mock"}
     """
-    client = _client_or_none()
-    if client is not None and history:
+    provider = _resolve_provider()
+    if provider != "mock" and history:
         try:
             text = _complete(
-                client,
-                SYSTEM_CHAT.format(faq=faq.as_prompt_text()),
+                provider,
+                SYSTEM_CHAT.replace("{faq}", faq.as_prompt_text()),
                 _to_api_messages(history),
                 max_tokens=700,
             )
             if text:
-                return {"reply": text, "source": "live"}
+                return {"reply": text, "source": provider}
         except Exception as exc:  # 네트워크/한도/파싱 등 모든 실패 → 폴백
             logger.warning("generate_reply: 모의 응답으로 폴백 (%s)", exc)
     return {"reply": _mock_reply(history), "source": "mock"}
@@ -134,16 +140,17 @@ def analyze_sentiment(text):
 
     반환: {"sentiment", "score", "risk_level", "reason", "source"}
     """
-    client = _client_or_none()
-    if client is not None and text.strip():
+    provider = _resolve_provider()
+    if provider != "mock" and text.strip():
         try:
             raw = _complete(
-                client,
+                provider,
                 SYSTEM_SENTIMENT,
                 [{"role": "user", "content": text}],
                 max_tokens=400,
+                want_json=True,
             )
-            return _normalize_sentiment(_extract_json(raw), source="live")
+            return _normalize_sentiment(_extract_json(raw), source=provider)
         except Exception as exc:
             logger.warning("analyze_sentiment: 모의 응답으로 폴백 (%s)", exc)
     return _mock_sentiment(text)
@@ -154,16 +161,17 @@ def summarize(history):
 
     반환: {"summary", "category", "tags", "key_points", "source"}
     """
-    client = _client_or_none()
-    if client is not None and history:
+    provider = _resolve_provider()
+    if provider != "mock" and history:
         try:
             raw = _complete(
-                client,
+                provider,
                 SYSTEM_SUMMARY,
                 [{"role": "user", "content": _transcript(history)}],
                 max_tokens=800,
+                want_json=True,
             )
-            return _normalize_summary(_extract_json(raw), source="live")
+            return _normalize_summary(_extract_json(raw), source=provider)
         except Exception as exc:
             logger.warning("summarize: 모의 응답으로 폴백 (%s)", exc)
     return _mock_summary(history)
@@ -174,26 +182,111 @@ def recommend(history):
 
     반환: {"recommendations": [{"title", "answer", "confidence"}], "source"}
     """
-    client = _client_or_none()
-    if client is not None and history:
+    provider = _resolve_provider()
+    if provider != "mock" and history:
         try:
             raw = _complete(
-                client,
-                SYSTEM_RECOMMEND.format(faq=faq.as_prompt_text()),
+                provider,
+                SYSTEM_RECOMMEND.replace("{faq}", faq.as_prompt_text()),
                 [{"role": "user", "content": _transcript(history)}],
                 max_tokens=900,
+                want_json=True,
             )
             recs = _normalize_recommendations(_extract_json(raw))
             if recs:
-                return {"recommendations": recs, "source": "live"}
+                return {"recommendations": recs, "source": provider}
         except Exception as exc:
             logger.warning("recommend: 모의 응답으로 폴백 (%s)", exc)
     return _mock_recommend(history)
 
 
 # ====================================================================
-# Claude API 호출
+# AI 제공자 (Claude / Ollama) 호출
 # ====================================================================
+
+def _resolve_provider():
+    """현재 사용할 AI 제공자를 결정한다: claude | ollama | mock.
+
+    config.AI_PROVIDER 설정을 따른다.
+      claude - ANTHROPIC_API_KEY 가 있으면 Claude, 없으면 mock
+      ollama - Ollama 서버가 응답하면 Ollama, 아니면 mock
+      mock   - 항상 모의 응답
+      auto   - Claude 키가 있으면 Claude, 없으면 Ollama, 둘 다 없으면 mock
+    """
+    provider = config.AI_PROVIDER
+    if provider == "mock":
+        return "mock"
+    if provider == "claude":
+        return "claude" if config.ANTHROPIC_API_KEY else "mock"
+    if provider == "ollama":
+        return "ollama" if _ollama_available() else "mock"
+    # auto
+    if config.ANTHROPIC_API_KEY:
+        return "claude"
+    return "ollama" if _ollama_available() else "mock"
+
+
+def _ollama_available():
+    """Ollama 서버가 응답하는지 확인한다 (결과를 30초간 캐시)."""
+    now = time.time()
+    if _ollama_cache["available"] is not None and now - _ollama_cache["checked_at"] < 30:
+        return _ollama_cache["available"]
+    available = False
+    try:
+        url = config.OLLAMA_BASE_URL.rstrip("/") + "/api/tags"
+        with urllib.request.urlopen(url, timeout=2) as resp:
+            available = 200 <= resp.status < 300
+    except Exception:
+        available = False
+    _ollama_cache["available"] = available
+    _ollama_cache["checked_at"] = now
+    return available
+
+
+def _complete(provider, system, messages, max_tokens, want_json=False):
+    """선택된 제공자로 텍스트 응답을 생성한다."""
+    if provider == "ollama":
+        return _complete_ollama(system, messages, max_tokens, want_json)
+    return _complete_claude(system, messages, max_tokens)
+
+
+def _complete_claude(system, messages, max_tokens):
+    """Claude Messages API 호출.
+
+    시스템 프롬프트(FAQ 포함, 요청 간 안정적인 prefix)에 prompt caching을 적용한다.
+    """
+    client = _client_or_none()
+    if client is None:
+        raise RuntimeError("Claude 클라이언트를 사용할 수 없습니다.")
+    response = client.messages.create(
+        model=config.CLAUDE_MODEL,
+        max_tokens=max_tokens,
+        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+        messages=messages,
+    )
+    return "".join(block.text for block in response.content if block.type == "text").strip()
+
+
+def _complete_ollama(system, messages, max_tokens, want_json):
+    """로컬 Ollama 서버의 /api/chat 엔드포인트를 호출한다."""
+    payload = {
+        "model": config.OLLAMA_MODEL,
+        "messages": [{"role": "system", "content": system}] + messages,
+        "stream": False,
+        "options": {"num_predict": max_tokens},
+    }
+    if want_json:
+        payload["format"] = "json"  # Ollama가 유효한 JSON만 생성하도록 강제
+    request = urllib.request.Request(
+        config.OLLAMA_BASE_URL.rstrip("/") + "/api/chat",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT) as resp:
+        body = json.loads(resp.read())
+    return (body.get("message", {}).get("content") or "").strip()
+
 
 def _client_or_none():
     """API 키가 있으면 anthropic 클라이언트를, 없으면 None을 반환."""
@@ -204,24 +297,10 @@ def _client_or_none():
         try:
             import anthropic
         except ImportError:
-            logger.warning("anthropic 패키지가 설치되어 있지 않습니다. 모의 응답으로 동작합니다.")
+            logger.warning("anthropic 패키지가 설치되어 있지 않습니다.")
             return None
         _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     return _client
-
-
-def _complete(client, system, messages, max_tokens):
-    """Claude Messages API 호출 후 텍스트를 반환한다.
-
-    시스템 프롬프트(FAQ 포함, 요청 간 안정적인 prefix)에 prompt caching을 적용한다.
-    """
-    response = client.messages.create(
-        model=config.CLAUDE_MODEL,
-        max_tokens=max_tokens,
-        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-        messages=messages,
-    )
-    return "".join(block.text for block in response.content if block.type == "text").strip()
 
 
 def _to_api_messages(history):

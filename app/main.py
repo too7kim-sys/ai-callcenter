@@ -5,7 +5,7 @@ import os
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
-from . import config
+from . import ai, config
 from .database import Base, engine
 from .routers import agent, chat
 
@@ -24,8 +24,10 @@ STATIC_DIR = os.path.join(
 
 @app.get("/api/config")
 def api_config():
-    """프런트엔드용 설정: AI 동작 모드(live/mock)와 모델명."""
-    return {"ai_mode": config.AI_MODE, "model": config.CLAUDE_MODEL}
+    """프런트엔드용 설정: AI 제공자(claude/ollama/mock)와 모델명."""
+    mode = ai.get_ai_mode()
+    model = {"claude": config.CLAUDE_MODEL, "ollama": config.OLLAMA_MODEL}.get(mode, "—")
+    return {"ai_mode": mode, "model": model}
 
 
 @app.get("/")
