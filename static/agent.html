@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>상담원 콘솔 · AI 콜센터</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f1f5f9;
+    color: #0f172a;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: #0f172a;
+    color: #fff;
+    padding: 12px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 16px; font-weight: 700; }
+  header .badge {
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .18);
+    font-weight: 600;
+  }
+  .layout { flex: 1; display: flex; overflow: hidden; }
+
+  /* ----- 상담 목록 ----- */
+  .list {
+    width: 320px;
+    background: #fff;
+    border-right: 1px solid #e2e8f0;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .list-title {
+    padding: 12px 16px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #64748b;
+    border-bottom: 1px solid #e2e8f0;
+    position: sticky;
+    top: 0;
+    background: #fff;
+  }
+  .conv {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer;
+  }
+  .conv:hover { background: #f8fafc; }
+  .conv.active { background: #eff6ff; border-left: 3px solid #1d4ed8; padding-left: 13px; }
+  .conv .top { display: flex; justify-content: space-between; align-items: center; }
+  .conv .name { font-weight: 700; font-size: 14px; }
+  .conv .preview {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .conv .meta { margin-top: 6px; display: flex; gap: 5px; flex-wrap: wrap; }
+
+  .chip {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .chip.open { background: #dbeafe; color: #1e40af; }
+  .chip.escalated { background: #fee2e2; color: #b91c1c; }
+  .chip.closed { background: #e2e8f0; color: #475569; }
+  .chip.cat { background: #f1f5f9; color: #475569; }
+  .chip.risk-low { background: #dcfce7; color: #166534; }
+  .chip.risk-medium { background: #fef3c7; color: #92400e; }
+  .chip.risk-high { background: #fee2e2; color: #b91c1c; }
+  .chip.sent { background: #f1f5f9; color: #334155; }
+
+  /* ----- 상세 ----- */
+  .detail { flex: 1; display: flex; overflow: hidden; }
+  .empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    font-size: 14px;
+  }
+  .transcript-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #e2e8f0;
+    min-width: 0;
+  }
+  .pane-head {
+    padding: 12px 18px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #fff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .pane-head .name { font-weight: 700; font-size: 15px; }
+  .pane-head .status-btns { display: flex; gap: 6px; }
+  .status-btns button {
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 7px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    cursor: pointer;
+    font-weight: 600;
+    color: #475569;
+  }
+  .status-btns button.sel-open { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+  .status-btns button.sel-escalated { background: #dc2626; color: #fff; border-color: #dc2626; }
+  .status-btns button.sel-closed { background: #475569; color: #fff; border-color: #475569; }
+
+  .transcript {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: #f8fafc;
+  }
+  .msg { max-width: 78%; display: flex; flex-direction: column; }
+  .msg.customer { align-self: flex-start; }
+  .msg.ai, .msg.agent { align-self: flex-end; align-items: flex-end; }
+  .msg .who { font-size: 11px; color: #64748b; margin-bottom: 3px; }
+  .msg .bubble {
+    padding: 9px 12px;
+    border-radius: 12px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg.customer .bubble { background: #fff; border: 1px solid #e2e8f0; }
+  .msg.ai .bubble { background: #eef2ff; border: 1px solid #c7d2fe; color: #312e81; }
+  .msg.agent .bubble { background: #1d4ed8; color: #fff; }
+  .msg .tag { font-size: 10px; margin-top: 3px; color: #94a3b8; }
+
+  .reply-box {
+    border-top: 1px solid #e2e8f0;
+    padding: 10px 14px;
+    background: #fff;
+  }
+  .reply-box textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 9px;
+    font-size: 13px;
+    resize: vertical;
+    min-height: 56px;
+    font-family: inherit;
+  }
+  .reply-box .actions { display: flex; justify-content: flex-end; margin-top: 7px; }
+  .reply-box button {
+    background: #059669;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* ----- AI 패널 ----- */
+  .ai-pane {
+    width: 340px;
+    background: #fff;
+    overflow-y: auto;
+    flex-shrink: 0;
+    padding: 14px;
+  }
+  .card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .card h3 {
+    font-size: 12px;
+    font-weight: 700;
+    color: #1d4ed8;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .card .src { font-size: 9px; color: #94a3b8; font-weight: 600; }
+  .card p { font-size: 13px; line-height: 1.6; color: #334155; }
+  .card .muted { color: #94a3b8; font-size: 12px; }
+  .card ul { margin-left: 16px; font-size: 12.5px; color: #334155; line-height: 1.7; }
+  .row-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
+  .btn-ai {
+    width: 100%;
+    background: #1d4ed8;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 9px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .btn-ai:disabled { background: #94a3b8; cursor: progress; }
+  .rec {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 9px;
+    margin-bottom: 8px;
+    background: #f8fafc;
+  }
+  .rec .rtitle { font-size: 12px; font-weight: 700; color: #0f172a; }
+  .rec .rans { font-size: 12.5px; color: #334155; line-height: 1.55; margin: 5px 0; }
+  .rec .rfoot { display: flex; justify-content: space-between; align-items: center; }
+  .rec .conf { font-size: 10px; color: #64748b; }
+  .rec button {
+    font-size: 10.5px;
+    padding: 4px 9px;
+    border-radius: 6px;
+    border: 1px solid #1d4ed8;
+    background: #fff;
+    color: #1d4ed8;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .sent-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .score { font-size: 12px; color: #64748b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>상담원 콘솔 · AI 콜센터</h1>
+  <span class="badge" id="mode-badge">·</span>
+</header>
+
+<div class="layout">
+  <div class="list">
+    <div class="list-title">상담 목록</div>
+    <div id="conv-list"></div>
+  </div>
+
+  <div class="detail" id="detail">
+    <div class="empty">왼쪽에서 상담을 선택하세요.</div>
+  </div>
+</div>
+
+<script>
+const API = "";
+let activeId = null;
+let listTimer = null;
+let detailTimer = null;
+let lastRenderedMsgIds = "";
+
+const $ = (id) => document.getElementById(id);
+function escapeHtml(t) {
+  const d = document.createElement("div");
+  d.textContent = t == null ? "" : t;
+  return d.innerHTML;
+}
+const STATUS_LABEL = { open: "진행중", escalated: "에스컬레이션", closed: "종료" };
+const RISK_LABEL = { low: "위험 낮음", medium: "위험 보통", high: "위험 높음" };
+const WHO = { customer: "고객", ai: "AI 상담봇", agent: "상담원" };
+
+async function loadConfig() {
+  try {
+    const cfg = await (await fetch(API + "/api/config")).json();
+    $("mode-badge").textContent =
+      (cfg.ai_mode === "live" ? "AI 연결됨 · " : "데모 모드 · ") + cfg.model;
+  } catch (e) {
+    $("mode-badge").textContent = "오프라인";
+  }
+}
+
+async function loadList() {
+  let conversations;
+  try {
+    conversations = await (await fetch(API + "/api/conversations")).json();
+  } catch (e) { return; }
+
+  const box = $("conv-list");
+  box.innerHTML = "";
+  if (!conversations.length) {
+    box.innerHTML = '<div style="padding:16px;color:#94a3b8;font-size:13px">상담이 아직 없습니다.</div>';
+    return;
+  }
+  conversations.forEach((c) => {
+    const div = document.createElement("div");
+    div.className = "conv" + (c.id === activeId ? " active" : "");
+    let meta = `<span class="chip ${c.status}">${STATUS_LABEL[c.status] || c.status}</span>`;
+    if (c.category) meta += `<span class="chip cat">${escapeHtml(c.category)}</span>`;
+    if (c.risk_level) meta += `<span class="chip risk-${c.risk_level}">${RISK_LABEL[c.risk_level]}</span>`;
+    div.innerHTML =
+      `<div class="top"><span class="name">${escapeHtml(c.customer_name)}</span>` +
+      `<span style="font-size:11px;color:#94a3b8">#${c.id}</span></div>` +
+      `<div class="preview">${escapeHtml(c.last_message || "메시지 없음")}</div>` +
+      `<div class="meta">${meta}</div>`;
+    div.addEventListener("click", () => selectConversation(c.id));
+    box.appendChild(div);
+  });
+}
+
+async function selectConversation(id) {
+  activeId = id;
+  lastRenderedMsgIds = "";
+  await loadList();
+  await loadDetail(true);
+  if (detailTimer) clearInterval(detailTimer);
+  detailTimer = setInterval(() => loadDetail(false), 4000);
+}
+
+async function loadDetail(rebuild) {
+  if (!activeId) return;
+  let conv;
+  try {
+    conv = await (await fetch(API + `/api/conversations/${activeId}`)).json();
+  } catch (e) { return; }
+  if (rebuild) renderDetailShell(conv);
+  renderTranscript(conv);
+  renderAnalysis(conv);
+}
+
+function renderDetailShell(conv) {
+  $("detail").innerHTML = `
+    <div class="transcript-pane">
+      <div class="pane-head">
+        <div>
+          <div class="name">${escapeHtml(conv.customer_name)} <span style="color:#94a3b8;font-size:12px">#${conv.id}</span></div>
+        </div>
+        <div class="status-btns" id="status-btns"></div>
+      </div>
+      <div class="transcript" id="transcript"></div>
+      <div class="reply-box">
+        <textarea id="reply-text" placeholder="고객에게 보낼 답변을 입력하거나, 오른쪽 추천 답변을 사용하세요."></textarea>
+        <div class="actions"><button id="send-reply">답변 전송</button></div>
+      </div>
+    </div>
+    <div class="ai-pane">
+      <button class="btn-ai" id="btn-analyze">AI 요약 · 분류 실행</button>
+      <button class="btn-ai" id="btn-recommend" style="background:#059669">답변 추천 받기</button>
+      <div class="card" id="card-sentiment"></div>
+      <div class="card" id="card-summary"></div>
+      <div class="card" id="card-recommend">
+        <h3>추천 답변</h3>
+        <p class="muted">'답변 추천 받기'를 눌러 FAQ 기반 추천을 받아보세요.</p>
+      </div>
+    </div>`;
+
+  renderStatusButtons(conv.status);
+  $("send-reply").addEventListener("click", sendReply);
+  $("btn-analyze").addEventListener("click", runAnalyze);
+  $("btn-recommend").addEventListener("click", runRecommend);
+}
+
+function renderStatusButtons(current) {
+  const box = $("status-btns");
+  if (!box) return;
+  box.innerHTML = "";
+  ["open", "escalated", "closed"].forEach((s) => {
+    const b = document.createElement("button");
+    b.textContent = STATUS_LABEL[s];
+    if (s === current) b.className = "sel-" + s;
+    b.addEventListener("click", () => changeStatus(s));
+    box.appendChild(b);
+  });
+}
+
+function renderTranscript(conv) {
+  const box = $("transcript");
+  if (!box) return;
+  const ids = (conv.messages || []).map((m) => m.id).join(",");
+  if (ids === lastRenderedMsgIds) return; // 변경 없으면 건너뜀
+  lastRenderedMsgIds = ids;
+  box.innerHTML = "";
+  (conv.messages || []).forEach((m) => {
+    const div = document.createElement("div");
+    div.className = "msg " + m.role;
+    let tag = "";
+    if (m.role === "customer" && m.sentiment) {
+      tag = `<div class="tag">감정: ${escapeHtml(m.sentiment)}</div>`;
+    }
+    div.innerHTML =
+      `<div class="who">${WHO[m.role] || m.role}</div>` +
+      `<div class="bubble">${escapeHtml(m.content)}</div>` + tag;
+    box.appendChild(div);
+  });
+  box.scrollTop = box.scrollHeight;
+  renderStatusButtons(conv.status);
+}
+
+function renderAnalysis(conv) {
+  // 감정 분석 카드
+  const cs = $("card-sentiment");
+  if (cs) {
+    if (conv.sentiment) {
+      const risk = conv.risk_level || "low";
+      cs.innerHTML =
+        `<h3>감정 분석</h3>` +
+        `<div class="sent-line">` +
+        `<span class="chip sent">${escapeHtml(conv.sentiment)}</span>` +
+        `<span class="chip risk-${risk}">${RISK_LABEL[risk]}</span>` +
+        `<span class="score">점수 ${conv.sentiment_score != null ? conv.sentiment_score : "-"}</span>` +
+        `</div>` +
+        (risk === "high"
+          ? `<p style="color:#b91c1c;margin-top:8px;font-weight:600">⚠ 위험 상담으로 자동 에스컬레이션되었습니다.</p>`
+          : "");
+    } else {
+      cs.innerHTML = `<h3>감정 분석</h3><p class="muted">고객 메시지가 수신되면 자동 분석됩니다.</p>`;
+    }
+  }
+
+  // 요약·분류 카드
+  const sm = $("card-summary");
+  if (sm) {
+    if (conv.summary) {
+      let tags = (conv.tags || [])
+        .map((t) => `<span class="chip cat">${escapeHtml(t)}</span>`)
+        .join("");
+      let kp = (conv.key_points || [])
+        .map((k) => `<li>${escapeHtml(k)}</li>`)
+        .join("");
+      sm.innerHTML =
+        `<h3>상담 요약 · 분류</h3>` +
+        `<p>${escapeHtml(conv.summary)}</p>` +
+        (conv.category ? `<div class="row-tags"><span class="chip cat">카테고리: ${escapeHtml(conv.category)}</span></div>` : "") +
+        (tags ? `<div class="row-tags">${tags}</div>` : "") +
+        (kp ? `<div style="margin-top:8px;font-size:11px;color:#64748b;font-weight:600">핵심 사항</div><ul>${kp}</ul>` : "");
+    } else {
+      sm.innerHTML = `<h3>상담 요약 · 분류</h3><p class="muted">'AI 요약 · 분류 실행'을 눌러 분석하세요.</p>`;
+    }
+  }
+}
+
+async function runAnalyze() {
+  const btn = $("btn-analyze");
+  btn.disabled = true;
+  btn.textContent = "분석 중…";
+  try {
+    const res = await fetch(API + `/api/conversations/${activeId}/analyze`, { method: "POST" });
+    const data = await res.json();
+    renderAnalysis(data.conversation);
+    loadList();
+  } catch (e) {
+    alert("분석 중 오류가 발생했습니다.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "AI 요약 · 분류 실행";
+  }
+}
+
+async function runRecommend() {
+  const btn = $("btn-recommend");
+  btn.disabled = true;
+  btn.textContent = "추천 생성 중…";
+  try {
+    const res = await fetch(API + `/api/conversations/${activeId}/recommend`, { method: "POST" });
+    const data = await res.json();
+    renderRecommendations(data.recommendations || [], data.source);
+  } catch (e) {
+    alert("추천 생성 중 오류가 발생했습니다.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "답변 추천 받기";
+  }
+}
+
+function renderRecommendations(recs, source) {
+  const card = $("card-recommend");
+  let html = `<h3>추천 답변 <span class="src">${source === "live" ? "AI" : "데모"}</span></h3>`;
+  if (!recs.length) {
+    html += `<p class="muted">추천할 답변이 없습니다.</p>`;
+  } else {
+    recs.forEach((r, i) => {
+      html +=
+        `<div class="rec">` +
+        `<div class="rtitle">${escapeHtml(r.title)}</div>` +
+        `<div class="rans">${escapeHtml(r.answer)}</div>` +
+        `<div class="rfoot">` +
+        `<span class="conf">신뢰도 ${Math.round((r.confidence || 0) * 100)}%</span>` +
+        `<button data-idx="${i}">답변에 넣기</button>` +
+        `</div></div>`;
+    });
+  }
+  card.innerHTML = html;
+  card.querySelectorAll("button[data-idx]").forEach((b) => {
+    b.addEventListener("click", () => {
+      $("reply-text").value = recs[b.dataset.idx].answer;
+      $("reply-text").focus();
+    });
+  });
+}
+
+async function sendReply() {
+  const ta = $("reply-text");
+  const text = ta.value.trim();
+  if (!text) return;
+  const btn = $("send-reply");
+  btn.disabled = true;
+  try {
+    await fetch(API + `/api/conversations/${activeId}/reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text }),
+    });
+    ta.value = "";
+    await loadDetail(false);
+    loadList();
+  } catch (e) {
+    alert("답변 전송 중 오류가 발생했습니다.");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function changeStatus(status) {
+  try {
+    const res = await fetch(API + `/api/conversations/${activeId}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    const conv = await res.json();
+    renderStatusButtons(conv.status);
+    loadList();
+  } catch (e) {
+    alert("상태 변경 중 오류가 발생했습니다.");
+  }
+}
+
+loadConfig();
+loadList();
+listTimer = setInterval(loadList, 5000);
+</script>
+</body>
+</html>
