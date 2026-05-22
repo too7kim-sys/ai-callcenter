@@ -207,6 +207,17 @@ function removeTyping() {
   if (t) t.remove();
 }
 
+function appendTemp(text) {
+  const row = document.createElement("div");
+  row.className = "row customer temp";
+  row.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
+  $("messages").appendChild(row);
+  scrollDown();
+}
+function clearTemp() {
+  document.querySelectorAll(".row.temp").forEach((el) => el.remove());
+}
+
 function renderConversation(conv) {
   (conv.messages || []).forEach(appendMessage);
 }
@@ -241,7 +252,7 @@ async function sendMessage() {
 
   input.value = "";
   $("send-btn").disabled = true;
-  appendMessage({ id: "tmp-" + Date.now(), role: "customer", content: text });
+  appendTemp(text); // 서버 저장 전 임시 표시 (응답 수신 시 교체)
   showTyping();
 
   try {
@@ -253,9 +264,12 @@ async function sendMessage() {
     if (!res.ok) throw new Error("요청 실패");
     const data = await res.json();
     removeTyping();
+    clearTemp();
     renderConversation(data.conversation);
   } catch (e) {
     removeTyping();
+    clearTemp();
+    input.value = text; // 실패 시 입력 복원
     const err = document.createElement("div");
     err.className = "notice";
     err.textContent = "전송 중 오류가 발생했습니다. 다시 시도해 주세요.";
