@@ -1,7 +1,7 @@
 """DB 모델: 상담(Conversation)과 메시지(Message)."""
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -68,4 +68,31 @@ class KnowledgeItem(Base):
     question = Column(Text)   # 고객 문의
     answer = Column(Text)     # 상담원이 실제로 보낸 답변
     embedding = Column(Text, nullable=True)  # 질문 임베딩 벡터 (JSON 배열). 없으면 키워드 검색.
+    created_at = Column(DateTime, default=_now)
+
+
+class Account(Base):
+    """대상 시스템(콜센터가 지원하는 서비스)의 사용자 계정."""
+
+    __tablename__ = "accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True)
+    name = Column(String)
+    phone = Column(String, nullable=True)
+    password_hash = Column(String)
+    created_at = Column(DateTime, default=_now)
+
+
+class PasswordResetToken(Base):
+    """비밀번호 재설정용 1회용 토큰."""
+
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), index=True)
+    token = Column(String, unique=True, index=True)
+    expires_at = Column(DateTime)
+    used = Column(Boolean, default=False)
     created_at = Column(DateTime, default=_now)

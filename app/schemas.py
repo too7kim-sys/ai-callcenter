@@ -16,3 +16,12 @@ class ReplyRequest(BaseModel):
 
 class StatusRequest(BaseModel):
     status: str  # open / escalated / closed
+
+
+class PasswordQuery(BaseModel):
+    query: str = Field(min_length=1, max_length=200)  # 이메일 또는 아이디
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=8, max_length=200)
+    new_password: str = Field(min_length=8, max_length=100)

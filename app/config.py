@@ -28,3 +28,16 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip()
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1").strip() or "llama3.1"
 # 상담 학습(RAG) 시 의미 검색에 사용할 임베딩 모델 (Ollama)
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text").strip() or "nomic-embed-text"
+
+# --- 이메일 (비밀번호 재설정 링크 발송). SMTP_HOST 미설정 시 서버 로그로 폴백. ---
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+try:
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587") or "587")
+except ValueError:
+    SMTP_PORT = 587
+SMTP_USER = os.getenv("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
+SMTP_FROM = os.getenv("SMTP_FROM", "no-reply@ai-callcenter.local").strip() or "no-reply@ai-callcenter.local"
+
+# 비밀번호 재설정 링크의 기본 URL. 미설정 시 요청 URL을 사용한다.
+APP_BASE_URL = os.getenv("APP_BASE_URL", "").strip().rstrip("/")
