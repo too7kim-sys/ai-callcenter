@@ -5,17 +5,19 @@ import os
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
-from . import ai, config
+from . import accounts, ai, config
 from .database import Base, engine
-from .routers import agent, chat
+from .routers import agent, chat, password
 
 logging.basicConfig(level=logging.INFO)
 
 Base.metadata.create_all(bind=engine)
+accounts.seed_accounts()
 
 app = FastAPI(title="AI 콜센터", version="1.0.0")
 app.include_router(chat.router)
 app.include_router(agent.router)
+app.include_router(password.router)
 
 STATIC_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static"
@@ -40,3 +42,9 @@ def customer_page():
 def agent_page():
     """상담원 콘솔 화면."""
     return FileResponse(os.path.join(STATIC_DIR, "agent.html"))
+
+
+@app.get("/reset")
+def reset_page():
+    """비밀번호 재설정 화면."""
+    return FileResponse(os.path.join(STATIC_DIR, "reset.html"))

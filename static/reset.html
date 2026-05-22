@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>비밀번호 재설정 · AI 콜센터</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    width: 400px;
+    max-width: 100%;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
+    overflow: hidden;
+  }
+  header {
+    background: #1d4ed8;
+    color: #fff;
+    padding: 20px;
+  }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header .sub { font-size: 12px; opacity: .85; margin-top: 3px; }
+  .body { padding: 22px; }
+  .info { font-size: 13.5px; color: #475569; line-height: 1.6; margin-bottom: 14px; }
+  input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 9px;
+    padding: 11px 13px;
+    font-size: 14px;
+    margin-bottom: 10px;
+    outline: none;
+  }
+  input:focus { border-color: #1d4ed8; }
+  button {
+    width: 100%;
+    background: #1d4ed8;
+    color: #fff;
+    border: none;
+    border-radius: 9px;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { background: #94a3b8; cursor: not-allowed; }
+  .msg { font-size: 12.5px; min-height: 18px; margin-bottom: 8px; }
+  .msg.error { color: #dc2626; }
+  .state {
+    font-size: 14px;
+    line-height: 1.65;
+    text-align: center;
+    padding: 10px 0;
+  }
+  .state.ok { color: #047857; }
+  .state.bad { color: #dc2626; }
+  .state .icon { font-size: 30px; display: block; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <header>
+    <h1>비밀번호 재설정</h1>
+    <div class="sub">AI 콜센터 계정 보안</div>
+  </header>
+  <div class="body" id="content">
+    <div class="state">확인 중…</div>
+  </div>
+</div>
+
+<script>
+const token = new URLSearchParams(location.search).get("token") || "";
+const $ = (id) => document.getElementById(id);
+
+function escapeHtml(text) {
+  const d = document.createElement("div");
+  d.textContent = text == null ? "" : text;
+  return d.innerHTML;
+}
+
+function showState(cls, icon, text) {
+  $("content").innerHTML =
+    `<div class="state ${cls}"><span class="icon">${icon}</span>${escapeHtml(text)}</div>`;
+}
+
+async function init() {
+  if (!token) {
+    showState("bad", "✕", "유효하지 않은 접근입니다. 재설정 링크를 다시 확인해 주세요.");
+    return;
+  }
+  try {
+    const res = await fetch("/api/password/token/" + encodeURIComponent(token));
+    const data = await res.json();
+    if (!data.valid) {
+      showState("bad", "✕", data.message || "유효하지 않은 링크입니다.");
+      return;
+    }
+    showForm(data.email_masked);
+  } catch (e) {
+    showState("bad", "✕", "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+  }
+}
+
+function showForm(emailMasked) {
+  $("content").innerHTML =
+    `<p class="info">${emailMasked ? escapeHtml(emailMasked) + " 계정의 " : ""}` +
+    `새 비밀번호를 설정해 주세요. (8자 이상)</p>` +
+    `<input type="password" id="pw1" placeholder="새 비밀번호" autocomplete="new-password" />` +
+    `<input type="password" id="pw2" placeholder="새 비밀번호 확인" autocomplete="new-password" />` +
+    `<div class="msg" id="msg"></div>` +
+    `<button id="submit">비밀번호 변경</button>`;
+  $("submit").addEventListener("click", submit);
+  $("pw2").addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+}
+
+function setMsg(text) {
+  const m = $("msg");
+  if (m) { m.textContent = text; m.className = "msg error"; }
+}
+
+async function submit() {
+  const pw1 = $("pw1").value;
+  const pw2 = $("pw2").value;
+  if (pw1.length < 8) { setMsg("비밀번호는 8자 이상이어야 합니다."); return; }
+  if (pw1 !== pw2) { setMsg("비밀번호가 일치하지 않습니다."); return; }
+
+  $("submit").disabled = true;
+  try {
+    const res = await fetch("/api/password/reset-confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, new_password: pw1 }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showState("ok", "✓", data.message + " 이제 새 비밀번호로 로그인하실 수 있습니다.");
+    } else {
+      setMsg(data.message || "재설정에 실패했습니다.");
+      $("submit").disabled = false;
+    }
+  } catch (e) {
+    setMsg("서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+    $("submit").disabled = false;
+  }
+}
+
+init();
+</script>
+</body>
+</html>
