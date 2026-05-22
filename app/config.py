@@ -26,3 +26,5 @@ CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-opus-4-7").strip() or "claude-o
 # --- Ollama (로컬 LLM) ---
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip() or "http://localhost:11434"
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1").strip() or "llama3.1"
+# 상담 학습(RAG) 시 의미 검색에 사용할 임베딩 모델 (Ollama)
+OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text").strip() or "nomic-embed-text"

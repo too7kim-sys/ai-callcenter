@@ -56,3 +56,16 @@ class Message(Base):
     created_at = Column(DateTime, default=_now)
 
     conversation = relationship("Conversation", back_populates="messages")
+
+
+class KnowledgeItem(Base):
+    """학습된 상담 지식. 종료된 상담의 (고객 문의 → 상담원 답변) 쌍을 저장한다."""
+
+    __tablename__ = "knowledge_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), index=True)
+    question = Column(Text)   # 고객 문의
+    answer = Column(Text)     # 상담원이 실제로 보낸 답변
+    embedding = Column(Text, nullable=True)  # 질문 임베딩 벡터 (JSON 배열). 없으면 키워드 검색.
+    created_at = Column(DateTime, default=_now)

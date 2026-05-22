@@ -248,7 +248,10 @@
 <body>
 <header>
   <h1>상담원 콘솔 · AI 콜센터</h1>
-  <span class="badge" id="mode-badge">·</span>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span class="badge" id="learn-badge">학습 0건</span>
+    <span class="badge" id="mode-badge">·</span>
+  </div>
 </header>
 
 <div class="layout">
@@ -290,6 +293,14 @@ async function loadConfig() {
   } catch (e) {
     $("mode-badge").textContent = "오프라인";
   }
+}
+
+async function loadKnowledge() {
+  try {
+    const k = await (await fetch(API + "/api/knowledge")).json();
+    const mode = k.embeddings ? "의미 검색" : "키워드 검색";
+    $("learn-badge").textContent = `학습 ${k.count}건 · ${mode}`;
+  } catch (e) { /* 무시 */ }
 }
 
 async function loadList() {
@@ -475,7 +486,7 @@ async function runRecommend() {
   try {
     const res = await fetch(API + `/api/conversations/${activeId}/recommend`, { method: "POST" });
     const data = await res.json();
-    renderRecommendations(data.recommendations || [], data.source);
+    renderRecommendations(data.recommendations || [], data.source, data.past_cases || []);
   } catch (e) {
     alert("추천 생성 중 오류가 발생했습니다.");
   } finally {
@@ -484,7 +495,7 @@ async function runRecommend() {
   }
 }
 
-function renderRecommendations(recs, source) {
+function renderRecommendations(recs, source, pastCases) {
   const card = $("card-recommend");
   const SRC = { claude: "Claude", ollama: "Ollama", mock: "데모" };
   let html = `<h3>추천 답변 <span class="src">${SRC[source] || "데모"}</span></h3>`;
@@ -500,6 +511,20 @@ function renderRecommendations(recs, source) {
         `<span class="conf">신뢰도 ${Math.round((r.confidence || 0) * 100)}%</span>` +
         `<button data-idx="${i}">답변에 넣기</button>` +
         `</div></div>`;
+    });
+  }
+  if (pastCases && pastCases.length) {
+    const m = pastCases[0].method === "embedding" ? "의미 검색" : "키워드 검색";
+    html +=
+      `<div style="margin-top:10px;font-size:11px;color:#64748b;font-weight:700">` +
+      `학습된 과거 상담 참고 (${m})</div>`;
+    pastCases.forEach((c) => {
+      html +=
+        `<div class="rec" style="background:#fffbeb;border-color:#fde68a">` +
+        `<div class="rtitle">Q. ${escapeHtml(c.question)}</div>` +
+        `<div class="rans">A. ${escapeHtml(c.answer)}</div>` +
+        `<div class="conf">상담 #${c.conversation_id} · 유사도 ${c.score}</div>` +
+        `</div>`;
     });
   }
   card.innerHTML = html;
@@ -543,12 +568,14 @@ async function changeStatus(status) {
     const conv = await res.json();
     renderStatusButtons(conv.status);
     loadList();
+    loadKnowledge(); // 종료 시 학습되므로 학습 현황 갱신
   } catch (e) {
     alert("상태 변경 중 오류가 발생했습니다.");
   }
 }
 
 loadConfig();
+loadKnowledge();
 loadList();
 listTimer = setInterval(loadList, 5000);
 </script>

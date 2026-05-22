@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from .. import ai
+from .. import ai, knowledge
 from ..database import get_db
 from ..models import Conversation, Message
 from ..schemas import ChatRequest, ConversationCreate
@@ -60,8 +60,9 @@ def chat(conversation_id: int, payload: ChatRequest, db: Session = Depends(get_d
     db.commit()
     db.refresh(conv)
 
-    # 3) AI 챗봇 멀티턴 응답 생성
-    reply = ai.generate_reply(build_history(conv))
+    # 3) 학습된 과거 상담 사례 검색 후 AI 챗봇 멀티턴 응답 생성
+    past_cases = knowledge.retrieve(db, message, limit=3)
+    reply = ai.generate_reply(build_history(conv), past_cases=past_cases)
     ai_msg = Message(conversation_id=conv.id, role="ai", content=reply["reply"])
     db.add(ai_msg)
     conv.updated_at = now()

@@ -9,10 +9,12 @@ AI 제공자로 **Claude API**(`claude-opus-4-7`) 또는 **로컬 Ollama** 를 �
 
 | 기능 | 설명 | 엔드포인트 |
 | --- | --- | --- |
-| AI 상담 챗봇 | 고객 문의 자동 응답 (멀티턴 대화) | `POST /api/conversations/{id}/chat` |
+| AI 상담 챗봇 | 고객 문의 자동 응답 (멀티턴 대화 + 과거 상담 학습) | `POST /api/conversations/{id}/chat` |
 | 상담 요약·분류 | 통화/채팅 내용 자동 요약 + 카테고리·태그 분류 | `POST /api/conversations/{id}/analyze` |
 | 감정 분석 | 고객 메시지 감정 분석 + 위험 상담 자동 에스컬레이션 | 채팅 시 자동 실행 |
-| 답변 추천 | FAQ 지식베이스 기반 상담원 추천 답변 | `POST /api/conversations/{id}/recommend` |
+| 답변 추천 | FAQ + 학습된 과거 상담 사례 기반 상담원 추천 답변 | `POST /api/conversations/{id}/recommend` |
+
+추가로 **상담 학습(RAG)** 기능이 챗봇·답변 추천에 적용됩니다 — 아래 참고.
 
 ## UI 2종
 
@@ -64,6 +66,22 @@ python run.py
 > 구조화 출력이 필요한 기능(감정 분석·요약·추천)은 Ollama 의 `format: "json"` 옵션을
 > 사용해 유효한 JSON 응답을 받습니다.
 
+## 상담 학습 (RAG)
+
+과거 상담 내용을 학습하여 다음 답변에 반영합니다.
+
+1. **학습** — 상담을 `종료(closed)` 상태로 바꾸면, 그 상담의 `고객 문의 → 상담원 답변`
+   쌍이 지식으로 저장됩니다. 상담원이 실제로 답변한 내용만 학습 대상입니다.
+2. **검색** — 새 문의가 들어오면 의미가 유사한 과거 사례를 찾아, AI 챗봇 응답과
+   상담원 답변 추천에 함께 활용합니다.
+3. **검색 방식**
+   - **의미 검색(임베딩)** — Ollama 가 있으면 `nomic-embed-text` 로 임베딩해
+     코사인 유사도로 검색합니다 (`ollama pull nomic-embed-text` 필요).
+   - **키워드 검색** — 임베딩을 쓸 수 없으면 단어 겹침 기반으로 자동 폴백합니다.
+
+상담원 콘솔 상단 배지에서 학습된 사례 수와 현재 검색 방식을 확인할 수 있고,
+답변 추천 시 참고한 과거 상담이 함께 표시됩니다.
+
 ## 프로젝트 구조
 
 ```
@@ -74,8 +92,9 @@ ai-callcenter/
 │   ├── database.py    # SQLite + SQLAlchemy
 │   ├── models.py      # Conversation / Message 모델
 │   ├── schemas.py     # 요청 스키마
-│   ├── ai.py          # Claude API 연동 + 모의 응답 폴백 (AI 기능 4종)
+│   ├── ai.py          # Claude/Ollama 연동 + 모의 응답 폴백 (AI 기능 4종, 임베딩)
 │   ├── faq.py         # FAQ 지식베이스
+│   ├── knowledge.py   # 상담 학습(RAG): 학습·임베딩·유사 사례 검색
 │   ├── service.py     # 직렬화·조회 헬퍼
 │   └── routers/
 │       ├── chat.py    # 고객 채팅 API

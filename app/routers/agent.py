@@ -4,7 +4,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import ai, faq
+from .. import ai, faq, knowledge
 from ..database import get_db
 from ..models import Conversation, Message
 from ..schemas import ReplyRequest, StatusRequest
@@ -51,10 +51,19 @@ def analyze_conversation(conversation_id: int, db: Session = Depends(get_db)):
 
 @router.post("/conversations/{conversation_id}/recommend")
 def recommend_answers(conversation_id: int, db: Session = Depends(get_db)):
-    """상담원 답변 추천: FAQ 지식베이스 기반 추천 답변 목록."""
+    """상담원 답변 추천: FAQ + 학습된 과거 상담 사례 기반 추천 답변 목록."""
     conv = get_conversation_or_404(db, conversation_id)
-    result = ai.recommend(build_history(conv))
-    return {"recommendations": result["recommendations"], "source": result["source"]}
+    history = build_history(conv)
+    last_customer = next(
+        (m["content"] for m in reversed(history) if m["role"] == "customer"), ""
+    )
+    past_cases = knowledge.retrieve(db, last_customer, limit=3)
+    result = ai.recommend(history, past_cases=past_cases)
+    return {
+        "recommendations": result["recommendations"],
+        "source": result["source"],
+        "past_cases": past_cases,
+    }
 
 
 @router.post("/conversations/{conversation_id}/reply")
@@ -78,8 +87,17 @@ def update_status(conversation_id: int, payload: StatusRequest, db: Session = De
     conv.status = payload.status
     conv.updated_at = now()
     db.commit()
+    # 상담 종료 시, 상담원이 답변한 내용을 학습 지식으로 저장
+    if payload.status == "closed":
+        knowledge.learn_from_conversation(db, conv)
     db.refresh(conv)
     return serialize_conversation(conv, include_messages=True)
+
+
+@router.get("/knowledge")
+def knowledge_stats(db: Session = Depends(get_db)):
+    """학습된 상담 지식 통계: 항목 수와 검색 방식(임베딩 가능 여부)."""
+    return {"count": knowledge.count(db), "embeddings": ai.embeddings_available()}
 
 
 @router.get("/faq")

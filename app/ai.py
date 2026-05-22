@@ -63,6 +63,8 @@ SYSTEM_CHAT = """당신은 'AI 콜센터'의 친절한 AI 상담원입니다.
 - 환불·불만·항의 등 민감한 사안은 먼저 공감을 표현한 뒤 안내합니다.
 - 고객이 강하게 화가 났거나 FAQ로 해결할 수 없는 복잡한 요청이면
   "담당 상담원에게 연결해 드리겠습니다"라고 안내합니다.
+- '과거 유사 상담 사례'가 함께 제공되면, 상담원이 실제로 답변한 그 내용을
+  우선 참고하여 일관된 답변을 제공합니다.
 
 FAQ 지식베이스:
 {faq}
@@ -98,6 +100,7 @@ SYSTEM_RECOMMEND = """당신은 상담원을 돕는 AI 어시스턴트입니다.
 
 - answer: 한국어 존댓말로, 고객 상황에 맞게 FAQ 내용을 자연스럽게 다듬어 작성.
 - FAQ 지식베이스에 없는 내용은 추측하지 마세요.
+- '과거 유사 상담 사례'가 제공되면 상담원이 실제로 답변한 그 내용을 적극 참고하세요.
 
 FAQ 지식베이스:
 {faq}
@@ -113,26 +116,24 @@ def get_ai_mode():
     return _resolve_provider()
 
 
-def generate_reply(history):
-    """AI 상담 챗봇: 대화 이력 기반 멀티턴 응답.
+def generate_reply(history, past_cases=None):
+    """AI 상담 챗봇: 대화 이력 + 과거 학습 사례 기반 멀티턴 응답.
 
-    history: [{"role": "customer|ai|agent", "content": str}, ...]
+    history:    [{"role": "customer|ai|agent", "content": str}, ...]
+    past_cases: [{"question": str, "answer": str}, ...] — 학습된 과거 상담 사례
     반환: {"reply": str, "source": "claude"|"ollama"|"mock"}
     """
     provider = _resolve_provider()
     if provider != "mock" and history:
         try:
-            text = _complete(
-                provider,
-                SYSTEM_CHAT.replace("{faq}", faq.as_prompt_text()),
-                _to_api_messages(history),
-                max_tokens=700,
-            )
+            system = SYSTEM_CHAT.replace("{faq}", faq.as_prompt_text())
+            system += _past_cases_block(past_cases)
+            text = _complete(provider, system, _to_api_messages(history), max_tokens=700)
             if text:
                 return {"reply": text, "source": provider}
         except Exception as exc:  # 네트워크/한도/파싱 등 모든 실패 → 폴백
             logger.warning("generate_reply: 모의 응답으로 폴백 (%s)", exc)
-    return {"reply": _mock_reply(history), "source": "mock"}
+    return {"reply": _mock_reply(history, past_cases), "source": "mock"}
 
 
 def analyze_sentiment(text):
@@ -177,17 +178,19 @@ def summarize(history):
     return _mock_summary(history)
 
 
-def recommend(history):
-    """상담원 답변 추천: FAQ 지식베이스 기반 추천 답변 목록.
+def recommend(history, past_cases=None):
+    """상담원 답변 추천: FAQ 지식베이스 + 과거 학습 사례 기반 추천 답변 목록.
 
     반환: {"recommendations": [{"title", "answer", "confidence"}], "source"}
     """
     provider = _resolve_provider()
     if provider != "mock" and history:
         try:
+            system = SYSTEM_RECOMMEND.replace("{faq}", faq.as_prompt_text())
+            system += _past_cases_block(past_cases)
             raw = _complete(
                 provider,
-                SYSTEM_RECOMMEND.replace("{faq}", faq.as_prompt_text()),
+                system,
                 [{"role": "user", "content": _transcript(history)}],
                 max_tokens=900,
                 want_json=True,
@@ -197,7 +200,7 @@ def recommend(history):
                 return {"recommendations": recs, "source": provider}
         except Exception as exc:
             logger.warning("recommend: 모의 응답으로 폴백 (%s)", exc)
-    return _mock_recommend(history)
+    return _mock_recommend(history, past_cases)
 
 
 # ====================================================================
@@ -288,6 +291,35 @@ def _complete_ollama(system, messages, max_tokens, want_json):
     return (body.get("message", {}).get("content") or "").strip()
 
 
+def embeddings_available():
+    """의미 기반 검색(임베딩)을 사용할 수 있는지 여부. Ollama 가용 시 True."""
+    return _ollama_available()
+
+
+def embed_text(text):
+    """텍스트를 임베딩 벡터로 변환한다 (Ollama). 불가능하면 None을 반환.
+
+    상담 학습(RAG)의 의미 기반 검색에 사용된다.
+    """
+    if not text or not text.strip() or not _ollama_available():
+        return None
+    try:
+        request = urllib.request.Request(
+            config.OLLAMA_BASE_URL.rstrip("/") + "/api/embeddings",
+            data=json.dumps({"model": config.OLLAMA_EMBED_MODEL, "prompt": text}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT) as resp:
+            body = json.loads(resp.read())
+        embedding = body.get("embedding")
+        if isinstance(embedding, list) and embedding:
+            return [float(x) for x in embedding]
+    except Exception as exc:
+        logger.warning("embed_text: 임베딩 실패 (%s)", exc)
+    return None
+
+
 def _client_or_none():
     """API 키가 있으면 anthropic 클라이언트를, 없으면 None을 반환."""
     global _client
@@ -328,6 +360,17 @@ def _transcript(history):
     return "\n".join(
         f"{label.get(item['role'], item['role'])}: {item['content']}" for item in history
     )
+
+
+def _past_cases_block(past_cases):
+    """학습된 과거 상담 사례를 시스템 프롬프트에 덧붙일 텍스트로 변환한다."""
+    if not past_cases:
+        return ""
+    lines = ["", "과거 유사 상담 사례 (상담원이 실제로 답변한 내용 — 우선 참고):"]
+    for case in past_cases:
+        lines.append(f"- 고객 문의: {case['question']}")
+        lines.append(f"  상담원 답변: {case['answer']}")
+    return "\n".join(lines)
 
 
 def _extract_json(text):
@@ -421,13 +464,18 @@ def _count(text, words):
     return sum(1 for w in words if w in text)
 
 
-def _mock_reply(history):
+def _mock_reply(history, past_cases=None):
     last = next((m["content"] for m in reversed(history) if m["role"] == "customer"), "")
     lowered = last.lower()
     if _count(lowered, RISK_KW) >= 1 or _count(lowered, NEGATIVE_KW) >= 2:
         return (
             "불편을 드려 진심으로 죄송합니다. 고객님의 상황을 빠르고 정확하게 "
             "처리해 드릴 수 있도록 담당 상담원에게 연결해 드리겠습니다. 잠시만 기다려 주세요."
+        )
+    if past_cases:  # 학습된 과거 상담 사례 우선
+        return (
+            "문의해 주셔서 감사합니다. 이전 유사 상담 사례를 참고해 안내드립니다. "
+            f"{past_cases[0]['answer']} 더 궁금하신 점이 있으시면 말씀해 주세요."
         )
     matches = faq.search(last, limit=1)
     if matches:
@@ -503,11 +551,16 @@ def _mock_summary(history):
     }
 
 
-def _mock_recommend(history):
-    text = " ".join(m["content"] for m in history if m["role"] == "customer")
-    matches = faq.search(text, limit=3)
+def _mock_recommend(history, past_cases=None):
     recs = []
-    for item in matches:
+    for case in (past_cases or [])[:2]:  # 학습된 과거 상담 사례 우선
+        recs.append({
+            "title": "과거 상담 사례 기반",
+            "answer": case["answer"],
+            "confidence": 0.78,
+        })
+    text = " ".join(m["content"] for m in history if m["role"] == "customer")
+    for item in faq.search(text, limit=3):
         recs.append({
             "title": item["question"],
             "answer": f"고객님, 문의해 주셔서 감사합니다. {item['answer']}",
@@ -522,4 +575,4 @@ def _mock_recommend(history):
             ),
             "confidence": 0.3,
         })
-    return {"recommendations": recs, "source": "mock"}
+    return {"recommendations": recs[:4], "source": "mock"}
