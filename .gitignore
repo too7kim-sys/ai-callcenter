@@ -9,4 +9,6 @@ env/
 *.sqlite3
 .DS_Store
 .idea/
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/extensions.json
