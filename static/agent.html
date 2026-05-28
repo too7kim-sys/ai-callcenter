@@ -284,6 +284,9 @@
   <div style="display:flex;gap:8px;align-items:center">
     <a class="badge" id="learn-badge" href="/knowledge" title="학습 데이터 관리로 이동">학습 0건</a>
     <span class="badge" id="mode-badge">·</span>
+    <a class="badge" id="users-link" href="/users" style="display:none">사용자 관리</a>
+    <span class="badge" id="me">·</span>
+    <a class="badge" id="logout-btn" href="#" title="로그아웃">로그아웃</a>
   </div>
 </header>
 
@@ -687,7 +690,30 @@ async function sendReset() {
   }
 }
 
+async function ensureLoggedIn() {
+  try {
+    const res = await fetch("/api/auth/me");
+    if (!res.ok) throw new Error("unauth");
+    const user = await res.json();
+    $("me").textContent = `${user.name} (${user.role === "admin" ? "관리자" : "상담원"})`;
+    if (user.role === "admin") $("users-link").style.display = "";
+    return user;
+  } catch (e) {
+    location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search);
+    throw e;
+  }
+}
+
+async function logout(e) {
+  if (e) e.preventDefault();
+  try { await fetch("/api/auth/logout", { method: "POST" }); } catch (err) {}
+  location.href = "/login";
+}
+
+$("logout-btn").addEventListener("click", logout);
+
 async function bootstrap() {
+  await ensureLoggedIn();
   loadConfig();
   loadKnowledge();
   await loadList();

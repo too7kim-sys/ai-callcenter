@@ -8,7 +8,7 @@ import logging
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from .. import accounts, config
+from .. import accounts, auth, config
 from ..database import get_db
 from ..schemas import PasswordQuery, PasswordResetConfirm
 
@@ -18,8 +18,12 @@ router = APIRouter(prefix="/api/password", tags=["password"])
 
 
 @router.post("/verify")
-def verify_account(payload: PasswordQuery, db: Session = Depends(get_db)):
-    """대상 시스템 테이블에서 계정 정보를 확인한다."""
+def verify_account(
+    payload: PasswordQuery,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_agent),
+):
+    """대상 시스템 테이블에서 계정 정보를 확인한다 (상담원 전용)."""
     account = accounts.find_account(db, payload.query)
     if account is None:
         return {"found": False, "account": None}
@@ -27,8 +31,13 @@ def verify_account(payload: PasswordQuery, db: Session = Depends(get_db)):
 
 
 @router.post("/reset-request")
-def request_reset(payload: PasswordQuery, request: Request, db: Session = Depends(get_db)):
-    """계정 확인 후 재설정 토큰을 생성하고 링크를 발송한다.
+def request_reset(
+    payload: PasswordQuery,
+    request: Request,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_agent),
+):
+    """계정 확인 후 재설정 토큰을 생성하고 링크를 발송한다 (상담원 전용).
 
     SMTP가 설정돼 있으면 이메일로 발송하고, 없으면 서버 로그로 폴백한다
     (개발 편의를 위해 폴백 시에만 응답에 링크를 포함한다).

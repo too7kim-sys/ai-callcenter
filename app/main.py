@@ -5,19 +5,24 @@ import os
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
-from . import accounts, ai, config
+from . import accounts, ai, auth, config
 from .database import Base, engine
 from .routers import agent, chat, password
+from .routers import auth as auth_router
+from .routers import users as users_router
 
 logging.basicConfig(level=logging.INFO)
 
 Base.metadata.create_all(bind=engine)
 accounts.seed_accounts()
+auth.seed_admin()
 
 app = FastAPI(title="AI 콜센터", version="1.0.0")
 app.include_router(chat.router)
 app.include_router(agent.router)
 app.include_router(password.router)
+app.include_router(auth_router.router)
+app.include_router(users_router.router)
 
 STATIC_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static"
@@ -60,3 +65,15 @@ def faq_page():
 def knowledge_page():
     """학습 데이터 관리 화면."""
     return FileResponse(os.path.join(STATIC_DIR, "knowledge.html"))
+
+
+@app.get("/login")
+def login_page():
+    """콜센터 사용자 로그인 화면."""
+    return FileResponse(os.path.join(STATIC_DIR, "login.html"))
+
+
+@app.get("/users")
+def users_page():
+    """콜센터 사용자 관리 화면 (관리자 전용)."""
+    return FileResponse(os.path.join(STATIC_DIR, "users.html"))

@@ -4,12 +4,7 @@
 비밀번호 재설정을 처리한다. 재설정 링크는 SMTP가 설정돼 있으면
 이메일로 발송하고, 없으면 서버 로그로 폴백한다.
 """
-import base64
-import hashlib
-import hmac
 import logging
-import os
-import secrets
 import smtplib
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -17,10 +12,10 @@ from email.message import EmailMessage
 from . import config
 from .database import SessionLocal
 from .models import Account, PasswordResetToken
+from .security import generate_token, hash_password, verify_password  # noqa: F401
 
 logger = logging.getLogger("ai_callcenter.accounts")
 
-_PBKDF2_ITERATIONS = 200_000
 RESET_TOKEN_TTL_MINUTES = 30
 
 _SEED_ACCOUNTS = [
@@ -33,31 +28,6 @@ _SEED_PASSWORD = "password1234"
 
 def _now():
     return datetime.now(timezone.utc)
-
-
-# ====================================================================
-# 비밀번호 해시 (PBKDF2-SHA256, 표준 라이브러리만 사용)
-# ====================================================================
-
-def hash_password(password):
-    salt = os.urandom(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _PBKDF2_ITERATIONS)
-    return "pbkdf2_sha256${}${}${}".format(
-        _PBKDF2_ITERATIONS,
-        base64.b64encode(salt).decode(),
-        base64.b64encode(digest).decode(),
-    )
-
-
-def verify_password(password, stored):
-    try:
-        _, iterations, salt_b64, digest_b64 = stored.split("$")
-        salt = base64.b64decode(salt_b64)
-        expected = base64.b64decode(digest_b64)
-        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(iterations))
-        return hmac.compare_digest(actual, expected)
-    except Exception:
-        return False
 
 
 # ====================================================================
@@ -113,7 +83,7 @@ def account_public(account):
 
 def create_reset_token(db, account):
     """계정에 대한 1회용 재설정 토큰을 생성·저장하고 토큰 문자열을 반환한다."""
-    token = secrets.token_urlsafe(32)
+    token = generate_token()
     db.add(PasswordResetToken(
         account_id=account.id,
         token=token,

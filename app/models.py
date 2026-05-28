@@ -96,3 +96,35 @@ class PasswordResetToken(Base):
     expires_at = Column(DateTime)
     used = Column(Boolean, default=False)
     created_at = Column(DateTime, default=_now)
+
+
+class AgentUser(Base):
+    """콜센터 사용자(상담원·관리자) 계정."""
+
+    __tablename__ = "agent_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    name = Column(String)
+    email = Column(String, nullable=True)
+    password_hash = Column(String)
+    role = Column(String, default="agent")  # admin / agent
+    active = Column(Boolean, default=True)
+    failed_login_count = Column(Integer, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    last_login_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_now)
+
+
+class AgentSession(Base):
+    """콜센터 사용자 로그인 세션 (HttpOnly 쿠키 토큰)."""
+
+    __tablename__ = "agent_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("agent_users.id"), index=True)
+    token = Column(String, unique=True, index=True)
+    expires_at = Column(DateTime)
+    created_at = Column(DateTime, default=_now)
+    ip = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)

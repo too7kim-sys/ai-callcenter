@@ -94,6 +94,34 @@ python run.py
 - 음성 인식을 지원하지 않는 브라우저(예: 일부 iOS Safari)에서는 마이크 버튼이
   자동으로 숨겨지고 텍스트 입력으로 이용할 수 있습니다.
 
+## 콜센터 사용자 인증 (상담원·관리자)
+
+상담원·관리자용 화면(`/agent`, `/knowledge`, `/faq`, `/users`)과 API는 모두
+로그인이 필요합니다. 고객용 채팅(`/`)과 고객 비밀번호 재설정(`/reset`)은
+그대로 공개입니다.
+
+- **초기 관리자** — 서버 최초 기동 시 `admin / admin1234` 계정이 자동 생성됩니다.
+  `.env`의 `ADMIN_INIT_PASSWORD`로 변경 가능. **로그인 직후 비밀번호 변경 권장.**
+- **로그인** — `/login` 에서 아이디·비밀번호 입력. 성공 시 HttpOnly+SameSite=Lax
+  쿠키로 세션이 설정됩니다(8시간 유효).
+- **사용자 관리** — 관리자 전용 `/users` 페이지에서 사용자 추가/역할 변경/
+  비밀번호 초기화/잠금 해제/삭제 가능. 본인 강등·비활성화·삭제는 차단됩니다.
+- **로그아웃** — 각 화면 상단의 '로그아웃' 링크.
+
+### 적용된 주요 보안 조치
+
+- HttpOnly + SameSite=Lax 세션 쿠키 (XSS 토큰 탈취·CSRF 완화)
+- 강한 세션 토큰(`secrets.token_urlsafe(32)`), 만료 8시간, 로그아웃 즉시 무효화
+- 로그인 5회 실패 시 15분 자동 잠금 (브루트포스 방지)
+- PBKDF2-SHA256(200,000 iter) + 상수시간 비교 (`hmac.compare_digest`)
+- 로그인 실패 응답은 사유 노출 없이 동일 메시지 (사용자명 열거 차단)
+- 본인 강등/비활성/삭제 차단 (잠금 자가-DoS 방지)
+- `/login?next=` 오픈 리다이렉트 방지 (상대 경로만 허용)
+- 비밀번호 변경 시 본인의 다른 세션도 모두 무효화
+
+> 운영(HTTPS) 환경에서는 `app/auth.py` 의 `set_session_cookie` 에서
+> `secure=True` 로 변경하여 쿠키가 HTTPS에서만 전송되도록 설정하세요.
+
 ## 비밀번호 재설정 지원
 
 상담원이 고객의 비밀번호 재설정을 도와주는 기능입니다.
@@ -126,16 +154,24 @@ ai-callcenter/
 │   ├── ai.py          # Claude/Ollama 연동 + 모의 응답 폴백 (AI 기능 4종, 임베딩)
 │   ├── faq.py         # FAQ 지식베이스
 │   ├── knowledge.py   # 상담 학습(RAG): 학습·임베딩·유사 사례 검색
-│   ├── accounts.py    # 대상 시스템 계정 + 비밀번호 재설정 (해시·토큰·메일)
+│   ├── accounts.py    # 대상 시스템 계정 + 비밀번호 재설정
+│   ├── auth.py        # 콜센터 사용자 인증·세션 (HttpOnly 쿠키)
+│   ├── security.py    # 비밀번호 해시·토큰 공통 유틸 (PBKDF2)
 │   ├── service.py     # 직렬화·조회 헬퍼
 │   └── routers/
-│       ├── chat.py    # 고객 채팅 API
-│       ├── agent.py   # 상담원 콘솔 API
-│       └── password.py # 비밀번호 재설정 지원 API
+│       ├── chat.py     # 고객 채팅 API (공개)
+│       ├── agent.py    # 상담원 콘솔 API (로그인 필요)
+│       ├── password.py # 고객 비밀번호 재설정 (verify/request 는 상담원, token/confirm 은 공개)
+│       ├── auth.py     # 로그인 / 로그아웃 / 본인 정보 / 비밀번호 변경
+│       └── users.py    # 사용자 CRUD (관리자 전용)
 ├── static/
-│   ├── customer.html  # 고객 채팅 화면
+│   ├── customer.html  # 고객 채팅 화면 (공개)
 │   ├── agent.html     # 상담원 콘솔 화면
-│   └── reset.html     # 비밀번호 재설정 화면
+│   ├── faq.html       # FAQ 뷰어
+│   ├── knowledge.html # 학습 데이터 관리
+│   ├── login.html     # 로그인 화면
+│   ├── users.html     # 사용자 관리 (관리자 전용)
+│   └── reset.html     # 고객 비밀번호 재설정 (공개)
 ├── requirements.txt
 └── run.py
 ```

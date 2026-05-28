@@ -4,7 +4,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import ai, faq, knowledge
+from .. import ai, auth, faq, knowledge
 from ..database import get_db
 from ..models import Conversation, KnowledgeItem, Message
 from ..schemas import ReplyRequest, StatusRequest
@@ -15,7 +15,12 @@ from ..service import (
     serialize_conversation,
 )
 
-router = APIRouter(prefix="/api", tags=["agent"])
+# 상담원용 API는 모두 로그인 필요
+router = APIRouter(
+    prefix="/api",
+    tags=["agent"],
+    dependencies=[Depends(auth.require_agent)],
+)
 
 _STATUSES = {"open", "escalated", "closed"}
 

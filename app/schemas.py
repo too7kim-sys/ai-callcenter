@@ -25,3 +25,33 @@ class PasswordQuery(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str = Field(min_length=8, max_length=200)
     new_password: str = Field(min_length=8, max_length=100)
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8, max_length=200)
+
+
+class UserCreateRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    name: str = Field(min_length=1, max_length=64)
+    email: str = Field(default="", max_length=200)
+    password: str = Field(min_length=8, max_length=200)
+    role: str = "agent"
+
+
+class UserUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=64)
+    email: str | None = Field(default=None, max_length=200)
+    role: str | None = None
+    active: bool | None = None
+    unlock: bool = False
+
+
+class AdminResetRequest(BaseModel):
+    new_password: str = Field(min_length=8, max_length=200)

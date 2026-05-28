@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>사용자 관리 · AI 콜센터</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f1f5f9;
+    color: #0f172a;
+    min-height: 100vh;
+  }
+  header {
+    background: #0f172a;
+    color: #fff;
+    padding: 14px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 { font-size: 16px; font-weight: 700; }
+  header .nav { display: flex; gap: 14px; align-items: center; font-size: 12px; }
+  header .nav a {
+    color: #fff;
+    text-decoration: none;
+    opacity: .9;
+  }
+  header .nav a:hover { text-decoration: underline; }
+  header .me {
+    background: rgba(255, 255, 255, .18);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .container { max-width: 980px; margin: 0 auto; padding: 20px 22px 60px; }
+  .panel {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .panel h2 {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1d4ed8;
+    margin-bottom: 12px;
+  }
+  .form-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr) auto;
+    gap: 8px;
+    align-items: stretch;
+  }
+  input, select {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+    background: #fff;
+  }
+  input:focus, select:focus { border-color: #1d4ed8; }
+  button {
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #334155;
+  }
+  button.primary {
+    background: #1d4ed8;
+    color: #fff;
+    border-color: #1d4ed8;
+  }
+  button.danger {
+    background: #fff;
+    color: #b91c1c;
+    border-color: #fecaca;
+  }
+  button:disabled { opacity: .6; cursor: progress; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td {
+    text-align: left;
+    padding: 10px 8px;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  th { color: #64748b; font-weight: 700; font-size: 12px; background: #f8fafc; }
+  td .actions { display: flex; gap: 4px; flex-wrap: wrap; }
+  td .actions button { padding: 4px 9px; font-size: 11.5px; }
+  .role-chip {
+    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 700;
+  }
+  .role-chip.admin { background: #fef3c7; color: #92400e; }
+  .role-chip.agent { background: #eff6ff; color: #1d4ed8; }
+  .status-chip {
+    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 700;
+  }
+  .status-chip.active { background: #ecfdf5; color: #047857; }
+  .status-chip.inactive { background: #fef2f2; color: #b91c1c; }
+  .status-chip.locked { background: #fef3c7; color: #92400e; }
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0f172a;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity .2s;
+  }
+  .toast.show { opacity: 1; }
+  @media (max-width: 720px) {
+    .form-row { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>사용자 관리 · AI 콜센터</h1>
+  <div class="nav">
+    <a href="/agent">상담원 콘솔</a>
+    <a href="/faq">FAQ</a>
+    <span class="me" id="me">·</span>
+    <a href="#" id="logout">로그아웃</a>
+  </div>
+</header>
+
+<div class="container">
+  <div class="panel">
+    <h2>신규 사용자 추가</h2>
+    <div class="form-row">
+      <input id="new-username" placeholder="아이디 (영문/숫자/._-)" />
+      <input id="new-name" placeholder="이름" />
+      <input id="new-email" placeholder="이메일 (선택)" />
+      <select id="new-role">
+        <option value="agent">상담원</option>
+        <option value="admin">관리자</option>
+      </select>
+      <input id="new-password" type="password" placeholder="비밀번호 (8자 이상)" />
+      <button class="primary" id="create-btn">추가</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>사용자 목록</h2>
+    <table id="table">
+      <thead>
+        <tr>
+          <th>ID</th><th>아이디</th><th>이름</th><th>역할</th><th>상태</th>
+          <th>최근 로그인</th><th>가입일</th><th>관리</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let me = null;
+let users = [];
+
+function escapeHtml(t) {
+  const d = document.createElement("div");
+  d.textContent = t == null ? "" : String(t);
+  return d.innerHTML;
+}
+
+function fmt(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch (e) { return iso; }
+}
+
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+function isLocked(u) {
+  if (!u.locked_until) return false;
+  try { return new Date(u.locked_until) > new Date(); } catch (e) { return false; }
+}
+
+async function ensureAdmin() {
+  try {
+    const res = await fetch("/api/auth/me");
+    if (!res.ok) throw new Error("unauth");
+    me = await res.json();
+    if (me.role !== "admin") {
+      location.href = "/agent";
+      return false;
+    }
+    $("me").textContent = `${me.name} (${me.role})`;
+    return true;
+  } catch (e) {
+    location.href = "/login?next=" + encodeURIComponent(location.pathname);
+    return false;
+  }
+}
+
+async function loadUsers() {
+  try {
+    const res = await fetch("/api/users");
+    if (!res.ok) throw new Error();
+    users = await res.json();
+    render();
+  } catch (e) {
+    toast("사용자 목록을 불러오지 못했습니다.");
+  }
+}
+
+function render() {
+  $("rows").innerHTML = users.map((u) => {
+    const locked = isLocked(u);
+    const statusChip = !u.active
+      ? '<span class="status-chip inactive">비활성</span>'
+      : locked
+      ? '<span class="status-chip locked">잠김</span>'
+      : '<span class="status-chip active">활성</span>';
+    const roleChip = `<span class="role-chip ${u.role}">${u.role === "admin" ? "관리자" : "상담원"}</span>`;
+    const isMe = me && u.id === me.id;
+    const actions = [
+      `<button data-act="reset" data-id="${u.id}">비밀번호 초기화</button>`,
+      `<button data-act="role" data-id="${u.id}">${u.role === "admin" ? "상담원으로" : "관리자로"}</button>`,
+      `<button data-act="active" data-id="${u.id}">${u.active ? "비활성화" : "활성화"}</button>`,
+      locked ? `<button data-act="unlock" data-id="${u.id}">잠금 해제</button>` : "",
+      `<button class="danger" data-act="delete" data-id="${u.id}">삭제</button>`,
+    ].filter(Boolean).join("");
+    return `
+      <tr>
+        <td>${u.id}</td>
+        <td><b>${escapeHtml(u.username)}</b>${isMe ? ' <span style="color:#94a3b8;font-size:11px">(나)</span>' : ''}</td>
+        <td>${escapeHtml(u.name || "")}</td>
+        <td>${roleChip}</td>
+        <td>${statusChip}</td>
+        <td style="color:#64748b">${escapeHtml(fmt(u.last_login_at))}</td>
+        <td style="color:#94a3b8">${escapeHtml(fmt(u.created_at))}</td>
+        <td><div class="actions">${actions}</div></td>
+      </tr>`;
+  }).join("");
+
+  document.querySelectorAll("[data-act]").forEach((b) => {
+    b.addEventListener("click", () => doAction(b.dataset.act, parseInt(b.dataset.id, 10)));
+  });
+}
+
+async function doAction(act, id) {
+  const user = users.find((u) => u.id === id);
+  if (!user) return;
+  try {
+    if (act === "delete") {
+      if (!confirm(`사용자 ${user.username}을(를) 삭제하시겠습니까?`)) return;
+      const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
+      if (!res.ok) throw await res.json();
+      toast("삭제했습니다.");
+    } else if (act === "reset") {
+      const pw = prompt("새 비밀번호 (8자 이상):");
+      if (!pw) return;
+      if (pw.length < 8) { toast("8자 이상이어야 합니다."); return; }
+      const res = await fetch(`/api/users/${id}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_password: pw }),
+      });
+      if (!res.ok) throw await res.json();
+      toast("비밀번호를 초기화했습니다.");
+    } else if (act === "role") {
+      const newRole = user.role === "admin" ? "agent" : "admin";
+      const res = await fetch(`/api/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: newRole }),
+      });
+      if (!res.ok) throw await res.json();
+      toast("역할을 변경했습니다.");
+    } else if (act === "active") {
+      const res = await fetch(`/api/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: !user.active }),
+      });
+      if (!res.ok) throw await res.json();
+      toast(user.active ? "비활성화했습니다." : "활성화했습니다.");
+    } else if (act === "unlock") {
+      const res = await fetch(`/api/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unlock: true }),
+      });
+      if (!res.ok) throw await res.json();
+      toast("잠금을 해제했습니다.");
+    }
+    await loadUsers();
+  } catch (e) {
+    toast(e?.detail || "처리 중 오류가 발생했습니다.");
+  }
+}
+
+async function createUser() {
+  const payload = {
+    username: $("new-username").value.trim(),
+    name: $("new-name").value.trim(),
+    email: $("new-email").value.trim(),
+    role: $("new-role").value,
+    password: $("new-password").value,
+  };
+  if (!payload.username || !payload.name || !payload.password) {
+    toast("아이디·이름·비밀번호는 필수입니다.");
+    return;
+  }
+  if (payload.password.length < 8) {
+    toast("비밀번호는 8자 이상이어야 합니다.");
+    return;
+  }
+  $("create-btn").disabled = true;
+  try {
+    const res = await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw await res.json();
+    ["new-username", "new-name", "new-email", "new-password"].forEach((id) => $(id).value = "");
+    $("new-role").value = "agent";
+    toast("사용자를 추가했습니다.");
+    await loadUsers();
+  } catch (e) {
+    toast(e?.detail || "생성에 실패했습니다.");
+  } finally {
+    $("create-btn").disabled = false;
+  }
+}
+
+async function logout(e) {
+  e.preventDefault();
+  await fetch("/api/auth/logout", { method: "POST" });
+  location.href = "/login";
+}
+
+$("create-btn").addEventListener("click", createUser);
+$("logout").addEventListener("click", logout);
+
+(async () => {
+  if (await ensureAdmin()) loadUsers();
+})();
+</script>
+</body>
+</html>
