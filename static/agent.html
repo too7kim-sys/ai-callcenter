@@ -31,6 +31,8 @@
     background: rgba(255, 255, 255, .18);
     font-weight: 600;
   }
+  header a.badge { color: #fff; text-decoration: none; cursor: pointer; }
+  header a.badge:hover { background: rgba(255, 255, 255, .35); }
   .layout { flex: 1; display: flex; overflow: hidden; }
 
   /* ----- 상담 목록 ----- */
@@ -280,7 +282,7 @@
 <header>
   <h1>상담원 콘솔 · AI 콜센터</h1>
   <div style="display:flex;gap:8px;align-items:center">
-    <span class="badge" id="learn-badge">학습 0건</span>
+    <a class="badge" id="learn-badge" href="/knowledge" title="학습 데이터 관리로 이동">학습 0건</a>
     <span class="badge" id="mode-badge">·</span>
   </div>
 </header>
@@ -685,9 +687,15 @@ async function sendReset() {
   }
 }
 
-loadConfig();
-loadKnowledge();
-loadList();
+async function bootstrap() {
+  loadConfig();
+  loadKnowledge();
+  await loadList();
+  // /knowledge 등에서 ?conv=N 으로 진입한 경우 해당 상담 자동 선택
+  const initConv = new URLSearchParams(location.search).get("conv");
+  if (initConv) selectConversation(parseInt(initConv, 10));
+}
+bootstrap();
 listTimer = setInterval(loadList, 5000);
 </script>
 </body>

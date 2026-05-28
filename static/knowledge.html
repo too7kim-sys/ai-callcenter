@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>학습 데이터 · AI 콜센터</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f1f5f9;
+    color: #0f172a;
+    min-height: 100vh;
+  }
+  header {
+    background: #1d4ed8;
+    color: #fff;
+    padding: 18px 22px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  }
+  header .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  header h1 { font-size: 17px; font-weight: 700; }
+  header .sub { font-size: 12px; opacity: .85; margin-top: 3px; }
+  header .count {
+    font-size: 11px;
+    background: rgba(255, 255, 255, .22);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .controls {
+    background: #fff;
+    padding: 12px 22px;
+    border-bottom: 1px solid #e2e8f0;
+    position: sticky;
+    top: 72px;
+    z-index: 9;
+  }
+  .search {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 11px 14px;
+    font-size: 14px;
+    outline: none;
+  }
+  .search:focus { border-color: #1d4ed8; }
+  .stats {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #64748b;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .stats b { color: #0f172a; }
+  .container { max-width: 920px; margin: 0 auto; padding: 16px 22px 60px; }
+  .item {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .item .head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .item .head .badges {
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .id-chip {
+    font-size: 11px;
+    color: #1d4ed8;
+    background: #eff6ff;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 700;
+  }
+  .date {
+    font-size: 11px;
+    color: #94a3b8;
+  }
+  .flag {
+    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 700;
+  }
+  .flag.ok { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+  .flag.no { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+  .flag.emb { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+  .del-btn {
+    flex-shrink: 0;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #fecaca;
+    background: #fff;
+    color: #b91c1c;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .del-btn:hover { background: #fef2f2; }
+  .src {
+    font-size: 12px;
+    color: #475569;
+    margin-bottom: 6px;
+  }
+  .src a {
+    color: #1d4ed8;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .src a:hover { text-decoration: underline; }
+  .q {
+    font-size: 14px;
+    color: #0f172a;
+    font-weight: 700;
+    line-height: 1.5;
+    margin: 4px 0;
+  }
+  .q::before { content: "Q. "; color: #1d4ed8; }
+  .a {
+    font-size: 13.5px;
+    color: #334155;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .a::before { content: "A. "; color: #059669; font-weight: 700; }
+  .empty {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 14px;
+    padding: 60px 0;
+    line-height: 1.6;
+  }
+  mark {
+    background: #fef3c7;
+    color: #92400e;
+    padding: 0 2px;
+    border-radius: 2px;
+  }
+  .nav-link {
+    color: #fff;
+    text-decoration: none;
+    font-size: 12px;
+    opacity: .9;
+    margin-right: 12px;
+  }
+  .nav-link:hover { text-decoration: underline; }
+  @media (max-width: 600px) {
+    header, .controls { padding-left: 16px; padding-right: 16px; }
+    .container { padding: 12px 16px 60px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <div>
+      <h1>학습 데이터 관리</h1>
+      <div class="sub">종료된 상담에서 자동 학습된 (질문 → 답변) 지식</div>
+    </div>
+    <div>
+      <a class="nav-link" href="/faq">← FAQ로</a>
+      <span class="count" id="count">·</span>
+    </div>
+  </div>
+</header>
+
+<div class="controls">
+  <input class="search" id="search" placeholder="질문·답변으로 검색하세요" autocomplete="off" />
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="container">
+  <div id="list"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let allItems = [];
+let searchText = "";
+
+function escapeHtml(text) {
+  const d = document.createElement("div");
+  d.textContent = text == null ? "" : String(text);
+  return d.innerHTML;
+}
+
+function highlight(text, query) {
+  const safe = escapeHtml(text);
+  if (!query) return safe;
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return safe.replace(new RegExp(escaped, "gi"), "<mark>$&</mark>");
+}
+
+function formatDate(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch (e) { return iso; }
+}
+
+async function init() {
+  try {
+    const res = await fetch("/api/knowledge/items");
+    allItems = await res.json();
+  } catch (e) {
+    $("list").innerHTML = '<div class="empty">학습 데이터를 불러올 수 없습니다.</div>';
+    return;
+  }
+  $("count").textContent = `${allItems.length}건`;
+  render();
+}
+
+function render() {
+  const q = searchText.trim().toLowerCase();
+  const filtered = allItems.filter((it) => {
+    if (!q) return true;
+    return (
+      (it.question || "").toLowerCase().includes(q) ||
+      (it.answer || "").toLowerCase().includes(q) ||
+      (it.customer_name || "").toLowerCase().includes(q)
+    );
+  });
+
+  const total = allItems.length;
+  const visible = allItems.filter((i) => i.faq_visible).length;
+  const embedded = allItems.filter((i) => i.has_embedding).length;
+  const hidden = total - visible;
+  $("stats").innerHTML =
+    `<span>총 <b>${total}</b>건</span>` +
+    `<span>FAQ 노출 <b>${visible}</b></span>` +
+    `<span>FAQ 비노출 <b>${hidden}</b> (짧은 답변)</span>` +
+    `<span>임베딩 <b>${embedded}</b></span>` +
+    (q ? `<span style="margin-left:auto">검색 결과 ${filtered.length}건</span>` : "");
+
+  if (!total) {
+    $("list").innerHTML =
+      '<div class="empty">아직 학습된 상담이 없습니다.<br />' +
+      "상담원이 답변한 상담을 '종료' 상태로 바꾸면 자동으로 학습됩니다.</div>";
+    return;
+  }
+  if (!filtered.length) {
+    $("list").innerHTML = '<div class="empty">조건에 맞는 항목이 없습니다.</div>';
+    return;
+  }
+
+  $("list").innerHTML = filtered.map((it) => {
+    const faqFlag = it.faq_visible
+      ? '<span class="flag ok">FAQ 노출</span>'
+      : '<span class="flag no">FAQ 비노출 (짧음)</span>';
+    const embFlag = it.has_embedding
+      ? '<span class="flag emb">임베딩 ✓</span>'
+      : '<span class="flag no">임베딩 ✗</span>';
+    return (
+      `<div class="item">` +
+      `<div class="head">` +
+      `<div class="badges">` +
+      `<span class="id-chip">#L${it.id}</span>` +
+      `<span class="date">학습 ${escapeHtml(formatDate(it.created_at))}</span>` +
+      faqFlag + embFlag +
+      `</div>` +
+      `<button class="del-btn" data-id="${it.id}">삭제</button>` +
+      `</div>` +
+      `<div class="src">출처: ${escapeHtml(it.customer_name || "(이름 없음)")} · ` +
+      `<a href="/agent?conv=${it.conversation_id}">상담 #${it.conversation_id}</a> ` +
+      `(${escapeHtml(it.conversation_status || "-")})</div>` +
+      `<div class="q">${highlight(it.question || "", q)}</div>` +
+      `<div class="a">${highlight(it.answer || "", q)}</div>` +
+      `</div>`
+    );
+  }).join("");
+
+  document.querySelectorAll(".del-btn").forEach((b) => {
+    b.addEventListener("click", () => deleteItem(parseInt(b.dataset.id, 10)));
+  });
+}
+
+async function deleteItem(id) {
+  if (!confirm(`학습 항목 #L${id}을(를) 삭제하시겠습니까?\n(상담을 다시 '종료' 처리하면 재학습될 수 있습니다.)`)) return;
+  try {
+    const res = await fetch(`/api/knowledge/items/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("삭제 실패");
+    await init();
+  } catch (e) {
+    alert("삭제 중 오류가 발생했습니다.");
+  }
+}
+
+$("search").addEventListener("input", (e) => {
+  searchText = e.target.value;
+  render();
+});
+
+init();
+</script>
+</body>
+</html>

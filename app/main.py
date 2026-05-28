@@ -54,3 +54,9 @@ def reset_page():
 def faq_page():
     """FAQ 지식베이스 뷰어 화면."""
     return FileResponse(os.path.join(STATIC_DIR, "faq.html"))
+
+
+@app.get("/knowledge")
+def knowledge_page():
+    """학습 데이터 관리 화면."""
+    return FileResponse(os.path.join(STATIC_DIR, "knowledge.html"))

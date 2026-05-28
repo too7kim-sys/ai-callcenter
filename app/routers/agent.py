@@ -100,6 +100,44 @@ def knowledge_stats(db: Session = Depends(get_db)):
     return {"count": knowledge.count(db), "embeddings": ai.embeddings_available()}
 
 
+@router.get("/knowledge/items")
+def list_knowledge_items(db: Session = Depends(get_db)):
+    """학습된 지식 전체 목록 (관리·검수용).
+
+    FAQ에 노출되지 않는 짧은 답변 항목도 모두 포함하며, 출처 상담의
+    고객명·상태와 임베딩 보유 여부, FAQ 노출 여부를 함께 반환한다.
+    """
+    items = db.query(KnowledgeItem).order_by(KnowledgeItem.id.desc()).all()
+    result = []
+    for row in items:
+        conv = db.get(Conversation, row.conversation_id)
+        answer = row.answer or ""
+        result.append({
+            "id": row.id,
+            "conversation_id": row.conversation_id,
+            "customer_name": conv.customer_name if conv else None,
+            "conversation_status": conv.status if conv else None,
+            "question": row.question,
+            "answer": answer,
+            "answer_length": len(answer.strip()),
+            "faq_visible": len(answer.strip()) >= _MIN_LEARNED_ANSWER_LEN,
+            "has_embedding": bool(row.embedding),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        })
+    return result
+
+
+@router.delete("/knowledge/items/{item_id}")
+def delete_knowledge_item(item_id: int, db: Session = Depends(get_db)):
+    """잘못 학습된 항목을 삭제한다 (검수용)."""
+    item = db.get(KnowledgeItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="학습 항목을 찾을 수 없습니다.")
+    db.delete(item)
+    db.commit()
+    return {"ok": True, "deleted_id": item_id}
+
+
 _MIN_LEARNED_ANSWER_LEN = 20  # 너무 짧은 상담원 답변은 FAQ로 노출하지 않음
 
 
