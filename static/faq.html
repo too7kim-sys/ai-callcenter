@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FAQ 지식베이스 · AI 콜센터</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f1f5f9;
+    color: #0f172a;
+    min-height: 100vh;
+  }
+  header {
+    background: #1d4ed8;
+    color: #fff;
+    padding: 18px 22px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  }
+  header .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  header h1 { font-size: 17px; font-weight: 700; }
+  header .sub { font-size: 12px; opacity: .85; margin-top: 3px; }
+  header .count {
+    font-size: 11px;
+    background: rgba(255, 255, 255, .22);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .controls {
+    background: #fff;
+    padding: 12px 22px;
+    border-bottom: 1px solid #e2e8f0;
+    position: sticky;
+    top: 72px;
+    z-index: 9;
+  }
+  .search {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 11px 14px;
+    font-size: 14px;
+    outline: none;
+  }
+  .search:focus { border-color: #1d4ed8; }
+  .cats {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+  .cat-btn {
+    flex-shrink: 0;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #475569;
+    cursor: pointer;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .cat-btn:hover { background: #f8fafc; }
+  .cat-btn.active {
+    background: #1d4ed8;
+    color: #fff;
+    border-color: #1d4ed8;
+    font-weight: 700;
+  }
+  .container { max-width: 920px; margin: 0 auto; padding: 16px 22px 60px; }
+  .stats { font-size: 12px; color: #64748b; margin-bottom: 12px; }
+  .item {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .item .top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .cat-chip {
+    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 700;
+  }
+  .id { font-size: 10.5px; color: #94a3b8; font-weight: 600; }
+  .q {
+    font-size: 14.5px;
+    color: #0f172a;
+    font-weight: 700;
+    line-height: 1.5;
+    margin: 4px 0;
+  }
+  .q::before { content: "Q. "; color: #1d4ed8; }
+  .a {
+    font-size: 13.5px;
+    color: #334155;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .a::before { content: "A. "; color: #059669; font-weight: 700; }
+  .kws {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .kw {
+    font-size: 10px;
+    color: #64748b;
+    background: #f1f5f9;
+    padding: 2px 7px;
+    border-radius: 4px;
+  }
+  .empty {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 14px;
+    padding: 60px 0;
+  }
+  mark {
+    background: #fef3c7;
+    color: #92400e;
+    padding: 0 2px;
+    border-radius: 2px;
+  }
+  @media (max-width: 600px) {
+    header, .controls { padding-left: 16px; padding-right: 16px; }
+    .container { padding: 12px 16px 60px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <div>
+      <h1>FAQ 지식베이스</h1>
+      <div class="sub">AI 콜센터 · 상담원 참고용</div>
+    </div>
+    <span class="count" id="count">·</span>
+  </div>
+</header>
+
+<div class="controls">
+  <input class="search" id="search" placeholder="질문·답변·키워드로 검색하세요" autocomplete="off" />
+  <div class="cats" id="cats"></div>
+</div>
+
+<div class="container">
+  <div class="stats" id="stats"></div>
+  <div id="list"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let allFaqs = [];
+let activeCategory = "전체";
+let searchText = "";
+
+function escapeHtml(text) {
+  const d = document.createElement("div");
+  d.textContent = text == null ? "" : String(text);
+  return d.innerHTML;
+}
+
+function highlight(text, query) {
+  const safe = escapeHtml(text);
+  if (!query) return safe;
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return safe.replace(new RegExp(escaped, "gi"), "<mark>$&</mark>");
+}
+
+async function init() {
+  try {
+    const res = await fetch("/api/faq");
+    allFaqs = await res.json();
+  } catch (e) {
+    $("list").innerHTML = '<div class="empty">FAQ를 불러올 수 없습니다.</div>';
+    return;
+  }
+  $("count").textContent = `${allFaqs.length}건`;
+  renderCategories();
+  render();
+}
+
+function renderCategories() {
+  const counts = {};
+  allFaqs.forEach((f) => { counts[f.category] = (counts[f.category] || 0) + 1; });
+  // 입력 순서 유지: FAQ 등장 순서대로 카테고리 정렬
+  const ordered = [];
+  const seen = new Set();
+  allFaqs.forEach((f) => {
+    if (!seen.has(f.category)) { seen.add(f.category); ordered.push(f.category); }
+  });
+  let html = `<button class="cat-btn active" data-cat="전체">전체 (${allFaqs.length})</button>`;
+  ordered.forEach((cat) => {
+    html += `<button class="cat-btn" data-cat="${escapeHtml(cat)}">${escapeHtml(cat)} (${counts[cat]})</button>`;
+  });
+  $("cats").innerHTML = html;
+  $("cats").querySelectorAll("button").forEach((b) => {
+    b.addEventListener("click", () => {
+      activeCategory = b.dataset.cat;
+      $("cats").querySelectorAll("button").forEach((x) => {
+        x.classList.toggle("active", x.dataset.cat === activeCategory);
+      });
+      render();
+    });
+  });
+}
+
+function render() {
+  const q = searchText.trim().toLowerCase();
+  const filtered = allFaqs.filter((f) => {
+    if (activeCategory !== "전체" && f.category !== activeCategory) return false;
+    if (!q) return true;
+    return (
+      f.question.toLowerCase().includes(q) ||
+      f.answer.toLowerCase().includes(q) ||
+      (f.keywords || []).some((k) => k.toLowerCase().includes(q))
+    );
+  });
+
+  $("stats").textContent =
+    activeCategory === "전체" && !q
+      ? `총 ${filtered.length}건`
+      : `필터 적용: ${filtered.length}건 / 전체 ${allFaqs.length}건`;
+
+  if (!filtered.length) {
+    $("list").innerHTML = '<div class="empty">조건에 맞는 항목이 없습니다.</div>';
+    return;
+  }
+  $("list").innerHTML = filtered.map((f) => {
+    const kws = (f.keywords || [])
+      .map((k) => `<span class="kw">${escapeHtml(k)}</span>`)
+      .join("");
+    return (
+      `<div class="item">` +
+      `<div class="top">` +
+      `<span class="cat-chip">${escapeHtml(f.category)}</span>` +
+      `<span class="id">#${f.id}</span>` +
+      `</div>` +
+      `<div class="q">${highlight(f.question, q)}</div>` +
+      `<div class="a">${highlight(f.answer, q)}</div>` +
+      (kws ? `<div class="kws">${kws}</div>` : "") +
+      `</div>`
+    );
+  }).join("");
+}
+
+$("search").addEventListener("input", (e) => {
+  searchText = e.target.value;
+  render();
+});
+
+init();
+</script>
+</body>
+</html>

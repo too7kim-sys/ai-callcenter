@@ -48,3 +48,9 @@ def agent_page():
 def reset_page():
     """비밀번호 재설정 화면."""
     return FileResponse(os.path.join(STATIC_DIR, "reset.html"))
+
+
+@app.get("/faq")
+def faq_page():
+    """FAQ 지식베이스 뷰어 화면."""
+    return FileResponse(os.path.join(STATIC_DIR, "faq.html"))
