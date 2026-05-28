@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import ai, faq, knowledge
 from ..database import get_db
-from ..models import Conversation, Message
+from ..models import Conversation, KnowledgeItem, Message
 from ..schemas import ReplyRequest, StatusRequest
 from ..service import (
     build_history,
@@ -100,7 +100,33 @@ def knowledge_stats(db: Session = Depends(get_db)):
     return {"count": knowledge.count(db), "embeddings": ai.embeddings_available()}
 
 
+_MIN_LEARNED_ANSWER_LEN = 20  # 너무 짧은 상담원 답변은 FAQ로 노출하지 않음
+
+
 @router.get("/faq")
-def get_faq():
-    """FAQ 지식베이스 조회."""
-    return faq.FAQS
+def get_faq(db: Session = Depends(get_db)):
+    """FAQ 지식베이스 조회 — 정적 FAQ + 종료된 상담에서 학습된 항목을 함께 반환한다.
+
+    각 항목에 `source`("curated"|"learned") 가 포함되며, 학습 항목은
+    출처 상담 ID(`conversation_id`)와 학습 시각(`learned_at`) 을 함께 노출한다.
+    """
+    items = [{**entry, "source": "curated"} for entry in faq.FAQS]
+
+    learned_rows = db.query(KnowledgeItem).order_by(KnowledgeItem.id).all()
+    for row in learned_rows:
+        if not row.answer or len(row.answer.strip()) < _MIN_LEARNED_ANSWER_LEN:
+            continue  # 너무 짧은 답변은 FAQ 노출 제외
+        conv = db.get(Conversation, row.conversation_id)
+        category = (conv.category if conv and conv.category
+                    else ai.classify_category(row.question))
+        items.append({
+            "id": f"L{row.id}",
+            "category": category,
+            "question": row.question,
+            "answer": row.answer,
+            "keywords": [],
+            "source": "learned",
+            "conversation_id": row.conversation_id,
+            "learned_at": row.created_at.isoformat() if row.created_at else None,
+        })
+    return items

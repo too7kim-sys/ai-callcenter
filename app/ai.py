@@ -136,6 +136,14 @@ def get_ai_mode():
     return _resolve_provider()
 
 
+def classify_category(text):
+    """텍스트의 카테고리를 키워드 기반으로 추정한다 (LLM 없이 동작).
+
+    학습된 상담 지식을 FAQ로 노출할 때 카테고리를 자동 부여하는 데 사용된다.
+    """
+    return _mock_category(text)
+
+
 def generate_reply(history, past_cases=None):
     """AI 상담 챗봇: 대화 이력 + 과거 학습 사례 기반 멀티턴 응답.
 

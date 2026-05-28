@@ -98,6 +98,15 @@
     color: #1d4ed8;
     font-weight: 700;
   }
+  .learned-badge {
+    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #ecfdf5;
+    color: #047857;
+    font-weight: 700;
+    border: 1px solid #a7f3d0;
+  }
   .id { font-size: 10.5px; color: #94a3b8; font-weight: 600; }
   .q {
     font-size: 14.5px;
@@ -236,10 +245,13 @@ function render() {
     );
   });
 
+  const curatedCount = allFaqs.filter((f) => f.source !== "learned").length;
+  const learnedCount = allFaqs.length - curatedCount;
+  const breakdown = `(큐레이션 ${curatedCount} · 학습 ${learnedCount})`;
   $("stats").textContent =
     activeCategory === "전체" && !q
-      ? `총 ${filtered.length}건`
-      : `필터 적용: ${filtered.length}건 / 전체 ${allFaqs.length}건`;
+      ? `총 ${filtered.length}건 ${breakdown}`
+      : `필터 적용: ${filtered.length}건 / 전체 ${allFaqs.length}건 ${breakdown}`;
 
   if (!filtered.length) {
     $("list").innerHTML = '<div class="empty">조건에 맞는 항목이 없습니다.</div>';
@@ -249,11 +261,15 @@ function render() {
     const kws = (f.keywords || [])
       .map((k) => `<span class="kw">${escapeHtml(k)}</span>`)
       .join("");
+    const learnedBadge = f.source === "learned"
+      ? `<span class="learned-badge">학습됨 · 상담 #${escapeHtml(String(f.conversation_id || ""))}</span>`
+      : "";
     return (
       `<div class="item">` +
       `<div class="top">` +
       `<span class="cat-chip">${escapeHtml(f.category)}</span>` +
-      `<span class="id">#${f.id}</span>` +
+      learnedBadge +
+      `<span class="id">#${escapeHtml(String(f.id))}</span>` +
       `</div>` +
       `<div class="q">${highlight(f.question, q)}</div>` +
       `<div class="a">${highlight(f.answer, q)}</div>` +
