@@ -1,8 +1,8 @@
-/* 콜센터 공통 상단 메뉴 */
+/* 콜센터 공통 상단 메뉴 — 브랜드 블루 (#1d4ed8) 통일 */
 .app-nav {
-  background: #0f172a;
+  background: #1d4ed8;
   color: #fff;
-  padding: 10px 22px;
+  padding: 12px 22px;
   display: flex;
   align-items: center;
   gap: 24px;
@@ -10,12 +10,12 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
   font-family: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
 }
 .app-nav .brand {
   font-weight: 800;
-  font-size: 14px;
+  font-size: 15px;
   letter-spacing: .3px;
   color: #fff;
   text-decoration: none;
@@ -28,25 +28,33 @@
   flex-wrap: wrap;
 }
 .app-nav .item {
-  color: rgba(255, 255, 255, .72);
+  /* 페이지별 .item 스타일과 충돌하지 않도록 명시적 reset */
+  background: transparent;
+  border: none;
+  margin: 0;
+  color: rgba(255, 255, 255, .80);
   text-decoration: none;
-  padding: 6px 12px;
-  border-radius: 7px;
+  padding: 7px 14px;
+  border-radius: 999px;
   font-weight: 600;
   transition: background .15s, color .15s;
   white-space: nowrap;
 }
-.app-nav .item:hover { background: rgba(255, 255, 255, .10); color: #fff; }
-.app-nav .item.active { background: #1d4ed8; color: #fff; }
+.app-nav .item:hover { background: rgba(255, 255, 255, .15); color: #fff; }
+.app-nav .item.active {
+  background: #fff;
+  color: #1d4ed8;
+  font-weight: 700;
+}
 .app-nav .user {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
   flex-shrink: 0;
 }
 .app-nav .me {
-  background: rgba(255, 255, 255, .15);
-  padding: 4px 11px;
+  background: rgba(255, 255, 255, .18);
+  padding: 5px 12px;
   border-radius: 999px;
   font-weight: 600;
 }
@@ -57,7 +65,7 @@
 }
 .app-nav .logout {
   color: #fff;
-  opacity: .8;
+  opacity: .85;
   text-decoration: none;
   font-size: 12px;
 }

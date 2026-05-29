@@ -76,8 +76,9 @@ def update_user(
         new_role = payload.role.strip().lower()
         if db.query(Role).filter(Role.name == new_role).first() is None:
             raise HTTPException(status_code=400, detail="존재하지 않는 역할입니다.")
-        if user.id == acting_user.id and new_role != permissions.ROLE_ADMIN:
-            raise HTTPException(status_code=400, detail="본인 관리자 권한은 해제할 수 없습니다.")
+        # 자가-권한 상승 / 자가-잠금 방지: 본인 역할은 변경 불가
+        if user.id == acting_user.id and new_role != user.role:
+            raise HTTPException(status_code=400, detail="본인의 역할은 변경할 수 없습니다.")
         user.role = new_role
     if payload.active is not None:
         if user.id == acting_user.id and not payload.active:

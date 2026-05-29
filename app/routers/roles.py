@@ -53,8 +53,14 @@ def list_catalog(
 @router.get("")
 def list_roles(
     db: Session = Depends(get_db),
-    _user=Depends(auth.require_permission(permissions.P.PERMISSION_MANAGE)),
+    user=Depends(auth.current_user),
 ):
+    """역할 목록 — 권한·역할 관리(편집용) 또는 사용자 관리(역할 부여 드롭다운용) 권한 필요."""
+    if not (
+        permissions.user_has(db, user, permissions.P.PERMISSION_MANAGE)
+        or permissions.user_has(db, user, permissions.P.USER_MANAGE)
+    ):
+        raise HTTPException(status_code=403, detail="이 작업을 수행할 권한이 없습니다.")
     rows = db.query(Role).order_by(Role.id).all()
     return [
         _serialize(r, permissions.permissions_of(db, r.name), _user_count(db, r.name))
