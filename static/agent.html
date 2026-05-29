@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>상담원 콘솔 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/ui.css" />
 <link rel="stylesheet" href="/assets/nav.css" />
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -302,6 +303,7 @@
   </div>
 </div>
 
+<script src="/assets/ui.js"></script>
 <script>
 const API = "";
 let activeId = null;
@@ -517,7 +519,7 @@ async function runAnalyze() {
     renderAnalysis(data.conversation);
     loadList();
   } catch (e) {
-    alert("분석 중 오류가 발생했습니다.");
+    UI.toast("분석 중 오류가 발생했습니다.", { type: "danger" });
   } finally {
     btn.disabled = false;
     btn.textContent = "AI 요약 · 분류 실행";
@@ -533,7 +535,7 @@ async function runRecommend() {
     const data = await res.json();
     renderRecommendations(data.recommendations || [], data.source, data.past_cases || []);
   } catch (e) {
-    alert("추천 생성 중 오류가 발생했습니다.");
+    UI.toast("추천 생성 중 오류가 발생했습니다.", { type: "danger" });
   } finally {
     btn.disabled = false;
     btn.textContent = "답변 추천 받기";
@@ -597,7 +599,7 @@ async function sendReply() {
     await loadDetail(false);
     loadList();
   } catch (e) {
-    alert("답변 전송 중 오류가 발생했습니다.");
+    UI.toast("답변 전송 중 오류가 발생했습니다.", { type: "danger" });
   } finally {
     btn.disabled = false;
   }
@@ -615,7 +617,7 @@ async function changeStatus(status) {
     loadList();
     loadKnowledge(); // 종료 시 학습되므로 학습 현황 갱신
   } catch (e) {
-    alert("상태 변경 중 오류가 발생했습니다.");
+    UI.toast("상태 변경 중 오류가 발생했습니다.", { type: "danger" });
   }
 }
 
@@ -634,7 +636,7 @@ async function verifyAccount() {
     });
     renderPwResult(await res.json());
   } catch (e) {
-    alert("계정 확인 중 오류가 발생했습니다.");
+    UI.toast("계정 확인 중 오류가 발생했습니다.", { type: "danger" });
   } finally {
     btn.disabled = false;
     btn.textContent = "계정 확인";
@@ -684,7 +686,7 @@ async function sendReset() {
     html += `</div>`;
     box.innerHTML = html;
   } catch (e) {
-    alert("재설정 링크 발송 중 오류가 발생했습니다.");
+    UI.toast("재설정 링크 발송 중 오류가 발생했습니다.", { type: "danger" });
   } finally {
     btn.disabled = false;
     btn.textContent = "재설정 링크 발송";

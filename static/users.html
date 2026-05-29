@@ -4,179 +4,127 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>사용자 관리 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/ui.css" />
 <link rel="stylesheet" href="/assets/nav.css" />
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #f1f5f9;
-    color: #0f172a;
-    min-height: 100vh;
-  }
-  header {
-    background: #0f172a;
-    color: #fff;
-    padding: 14px 22px;
-    display: flex;
+  .role-chip.admin { background: var(--c-warning-bg); color: var(--c-warning); border-color: var(--c-warning-border); }
+  .role-chip.agent { background: var(--c-brand-50); color: var(--c-brand-800); border-color: var(--c-brand-100); }
+  .role-chip.custom { background: var(--c-info-bg); color: var(--c-info); border-color: var(--c-info-border); }
+  .status-dot {
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 5px;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semibold);
   }
-  header h1 { font-size: 16px; font-weight: 700; }
-  header .nav { display: flex; gap: 14px; align-items: center; font-size: 12px; }
-  header .nav a {
-    color: #fff;
-    text-decoration: none;
-    opacity: .9;
-  }
-  header .nav a:hover { text-decoration: underline; }
-  header .me {
-    background: rgba(255, 255, 255, .18);
-    padding: 4px 10px;
+  .status-dot::before {
+    content: "";
+    width: 7px;
+    height: 7px;
     border-radius: 999px;
-    font-weight: 600;
+    background: currentColor;
   }
-  .container { max-width: 980px; margin: 0 auto; padding: 20px 22px 60px; }
-  .panel {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 18px;
-    margin-bottom: 16px;
+  .status-dot.active   { color: var(--c-success); }
+  .status-dot.inactive { color: var(--c-text-faint); }
+  .status-dot.locked   { color: var(--c-warning); }
+  .table td { font-size: var(--text-base); vertical-align: middle; }
+  .table .username { font-weight: var(--fw-bold); }
+  .table .me-tag { color: var(--c-text-faint); font-size: var(--text-xs); margin-left: 6px; font-weight: var(--fw-medium); }
+  .inline-select {
+    font-size: var(--text-xs);
+    padding: 3px 22px 3px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--c-border-strong);
+    background: var(--c-surface);
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%2364748b' d='M5 6 0 0h10z'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
   }
-  .panel h2 {
-    font-size: 14px;
-    font-weight: 700;
-    color: #1d4ed8;
-    margin-bottom: 12px;
-  }
-  .form-row {
+  .new-form-row {
     display: grid;
-    grid-template-columns: repeat(5, 1fr) auto;
-    gap: 8px;
-    align-items: stretch;
+    grid-template-columns: 1.2fr 1fr 1.2fr 0.9fr 1.2fr auto;
+    gap: var(--space-2);
+    align-items: flex-end;
   }
-  input, select {
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-size: 13px;
-    outline: none;
-    font-family: inherit;
-    background: #fff;
-  }
-  input:focus, select:focus { border-color: #1d4ed8; }
-  button {
-    border-radius: 8px;
-    padding: 8px 14px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid #cbd5e1;
-    background: #fff;
-    color: #334155;
-  }
-  button.primary {
-    background: #1d4ed8;
-    color: #fff;
-    border-color: #1d4ed8;
-  }
-  button.danger {
-    background: #fff;
-    color: #b91c1c;
-    border-color: #fecaca;
-  }
-  button:disabled { opacity: .6; cursor: progress; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td {
-    text-align: left;
-    padding: 10px 8px;
-    border-bottom: 1px solid #f1f5f9;
-  }
-  th { color: #64748b; font-weight: 700; font-size: 12px; background: #f8fafc; }
-  td .actions { display: flex; gap: 4px; flex-wrap: wrap; }
-  td .actions button { padding: 4px 9px; font-size: 11.5px; }
-  .role-chip {
-    font-size: 10.5px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-weight: 700;
-  }
-  .role-chip.admin { background: #fef3c7; color: #92400e; }
-  .role-chip.agent { background: #eff6ff; color: #1d4ed8; }
-  .status-chip {
-    font-size: 10.5px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-weight: 700;
-  }
-  .status-chip.active { background: #ecfdf5; color: #047857; }
-  .status-chip.inactive { background: #fef2f2; color: #b91c1c; }
-  .status-chip.locked { background: #fef3c7; color: #92400e; }
-  .toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #0f172a;
-    color: #fff;
-    padding: 10px 18px;
-    border-radius: 8px;
-    font-size: 13px;
-    z-index: 100;
-    opacity: 0;
-    transition: opacity .2s;
-  }
-  .toast.show { opacity: 1; }
-  @media (max-width: 720px) {
-    .form-row { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 760px) {
+    .new-form-row { grid-template-columns: 1fr 1fr; }
   }
 </style>
 </head>
 <body>
 <header id="app-nav"></header>
 
-<div class="container">
-  <div style="padding:6px 0 16px"><h1 style="font-size:18px;font-weight:700;color:#0f172a">사용자 관리</h1></div>
-  <div class="panel">
-    <h2>신규 사용자 추가</h2>
-    <div class="form-row">
-      <input id="new-username" placeholder="아이디 (영문/숫자/._-)" />
-      <input id="new-name" placeholder="이름" />
-      <input id="new-email" placeholder="이메일 (선택)" />
-      <select id="new-role"></select>
-      <input id="new-password" type="password" placeholder="비밀번호 (8자 이상)" />
-      <button class="primary" id="create-btn">추가</button>
-    </div>
+<header class="page-header">
+  <div>
+    <div class="title">사용자 관리</div>
+    <div class="subtitle">콜센터 사용자(상담원·관리자)를 관리합니다.</div>
   </div>
+  <div class="meta">
+    <span class="chip" id="count-chip">·</span>
+  </div>
+</header>
 
-  <div class="panel">
-    <h2>사용자 목록</h2>
-    <table id="table">
+<div class="page-container">
+  <section class="card" style="margin-bottom: var(--space-4)">
+    <div class="card-head">
+      <div class="title">신규 사용자 추가</div>
+    </div>
+    <div class="card-body">
+      <div class="new-form-row">
+        <div class="field" style="margin:0">
+          <div class="label">아이디</div>
+          <input class="input" id="new-username" placeholder="영문/숫자/._-" />
+        </div>
+        <div class="field" style="margin:0">
+          <div class="label">이름</div>
+          <input class="input" id="new-name" placeholder="이름" />
+        </div>
+        <div class="field" style="margin:0">
+          <div class="label">이메일 (선택)</div>
+          <input class="input" id="new-email" placeholder="user@example.com" />
+        </div>
+        <div class="field" style="margin:0">
+          <div class="label">역할</div>
+          <select class="select" id="new-role"></select>
+        </div>
+        <div class="field" style="margin:0">
+          <div class="label">비밀번호</div>
+          <input class="input" type="password" id="new-password" placeholder="8자 이상" />
+        </div>
+        <button class="btn btn-primary" id="create-btn">추가</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div class="title">사용자 목록</div>
+    </div>
+    <table class="table">
       <thead>
         <tr>
-          <th>ID</th><th>아이디</th><th>이름</th><th>역할</th><th>상태</th>
-          <th>최근 로그인</th><th>가입일</th><th>관리</th>
+          <th style="width:50px">ID</th>
+          <th>아이디</th>
+          <th>이름</th>
+          <th>역할</th>
+          <th>상태</th>
+          <th>최근 로그인</th>
+          <th style="text-align:right">관리</th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
     </table>
-  </div>
+  </section>
 </div>
 
-<div class="toast" id="toast"></div>
-
+<script src="/assets/ui.js"></script>
 <script src="/assets/nav.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let me = null;
 let users = [];
 let availableRoles = [];
-
-function escapeHtml(t) {
-  const d = document.createElement("div");
-  d.textContent = t == null ? "" : String(t);
-  return d.innerHTML;
-}
 
 function fmt(iso) {
   if (!iso) return "—";
@@ -187,19 +135,14 @@ function fmt(iso) {
   } catch (e) { return iso; }
 }
 
-function toast(text) {
-  const t = $("toast");
-  t.textContent = text;
-  t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 2200);
-}
-
 function isLocked(u) {
   if (!u.locked_until) return false;
   try { return new Date(u.locked_until) > new Date(); } catch (e) { return false; }
 }
 
-async function loadUsersAndRoles() {
+const roleLabel = (r) => ({ admin: "관리자", agent: "상담원" }[r] || r);
+
+async function loadAll() {
   try {
     const [uRes, rRes] = await Promise.all([
       fetch("/api/users"),
@@ -207,62 +150,51 @@ async function loadUsersAndRoles() {
     ]);
     if (!uRes.ok) throw new Error("users");
     users = await uRes.json();
-    if (rRes.ok) {
-      availableRoles = await rRes.json();
-    } else {
-      // 권한이 없는 경우 기본 역할만
-      availableRoles = [{ name: "agent" }, { name: "admin" }];
-    }
+    availableRoles = rRes.ok ? await rRes.json() : [{ name: "agent" }, { name: "admin" }];
     renderRoleOptions();
     render();
   } catch (e) {
-    toast("사용자 목록을 불러오지 못했습니다.");
+    UI.toast("사용자 목록을 불러오지 못했습니다.", { type: "danger" });
   }
 }
 
 function renderRoleOptions() {
-  const labels = { admin: "관리자", agent: "상담원" };
   const opts = availableRoles
-    .map((r) => `<option value="${r.name}">${labels[r.name] || r.name}</option>`)
+    .map((r) => `<option value="${UI.escapeHtml(r.name)}">${UI.escapeHtml(roleLabel(r.name))}</option>`)
     .join("");
   $("new-role").innerHTML = opts;
 }
 
 function render() {
+  $("count-chip").textContent = `${users.length}명`;
   $("rows").innerHTML = users.map((u) => {
     const locked = isLocked(u);
-    const statusChip = !u.active
-      ? '<span class="status-chip inactive">비활성</span>'
-      : locked
-      ? '<span class="status-chip locked">잠김</span>'
-      : '<span class="status-chip active">활성</span>';
-    const roleLabels = { admin: "관리자", agent: "상담원" };
-    const roleClass = u.role === "admin" ? "admin" : "agent";
-    const roleChip = `<span class="role-chip ${roleClass}">${escapeHtml(roleLabels[u.role] || u.role)}</span>`;
+    const statusKey = !u.active ? "inactive" : (locked ? "locked" : "active");
+    const statusLabel = !u.active ? "비활성" : (locked ? "잠김" : "활성");
+    const roleClass = u.role === "admin" ? "admin" : (u.role === "agent" ? "agent" : "custom");
+    const roleChip = `<span class="chip role-chip ${roleClass}">${UI.escapeHtml(roleLabel(u.role))}</span>`;
     const isMe = me && u.id === me.id;
-    // 역할 변경 드롭다운 inline (커스텀 역할 지원)
     const roleSelect = availableRoles.length > 1
-      ? '<select class="role-select" data-id="' + u.id + '" style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid #cbd5e1">'
-        + availableRoles.map((r) => `<option value="${escapeHtml(r.name)}" ${r.name === u.role ? "selected" : ""}>${escapeHtml(roleLabels[r.name] || r.name)}</option>`).join("")
+      ? '<select class="inline-select" data-role-id="' + u.id + '">'
+        + availableRoles.map((r) => `<option value="${UI.escapeHtml(r.name)}" ${r.name === u.role ? "selected" : ""}>${UI.escapeHtml(roleLabel(r.name))}</option>`).join("")
         + '</select>'
-      : '';
+      : "";
     const actions = [
-      `<button data-act="edit" data-id="${u.id}">정보 수정</button>`,
-      `<button data-act="reset" data-id="${u.id}">비밀번호 초기화</button>`,
+      `<button class="btn btn-ghost btn-xs" data-act="edit" data-id="${u.id}">정보 수정</button>`,
+      `<button class="btn btn-ghost btn-xs" data-act="reset" data-id="${u.id}">비밀번호 초기화</button>`,
       roleSelect,
-      `<button data-act="active" data-id="${u.id}">${u.active ? "비활성화" : "활성화"}</button>`,
-      locked ? `<button data-act="unlock" data-id="${u.id}">잠금 해제</button>` : "",
-      `<button class="danger" data-act="delete" data-id="${u.id}">삭제</button>`,
-    ].filter(Boolean).join(" ");
+      `<button class="btn btn-ghost btn-xs" data-act="active" data-id="${u.id}">${u.active ? "비활성화" : "활성화"}</button>`,
+      locked ? `<button class="btn btn-ghost btn-xs" data-act="unlock" data-id="${u.id}">잠금 해제</button>` : "",
+      `<button class="btn btn-danger btn-xs" data-act="delete" data-id="${u.id}">삭제</button>`,
+    ].filter(Boolean).join("");
     return `
       <tr>
-        <td>${u.id}</td>
-        <td><b>${escapeHtml(u.username)}</b>${isMe ? ' <span style="color:#94a3b8;font-size:11px">(나)</span>' : ''}</td>
-        <td>${escapeHtml(u.name || "")}</td>
+        <td class="muted">${u.id}</td>
+        <td><span class="username">${UI.escapeHtml(u.username)}</span>${isMe ? '<span class="me-tag">(나)</span>' : ''}</td>
+        <td>${UI.escapeHtml(u.name || "")}</td>
         <td>${roleChip}</td>
-        <td>${statusChip}</td>
-        <td style="color:#64748b">${escapeHtml(fmt(u.last_login_at))}</td>
-        <td style="color:#94a3b8">${escapeHtml(fmt(u.created_at))}</td>
+        <td><span class="status-dot ${statusKey}">${statusLabel}</span></td>
+        <td class="muted">${UI.escapeHtml(fmt(u.last_login_at))}</td>
         <td><div class="actions">${actions}</div></td>
       </tr>`;
   }).join("");
@@ -270,8 +202,8 @@ function render() {
   document.querySelectorAll("[data-act]").forEach((b) => {
     b.addEventListener("click", () => doAction(b.dataset.act, parseInt(b.dataset.id, 10)));
   });
-  document.querySelectorAll(".role-select").forEach((sel) => {
-    sel.addEventListener("change", () => changeRole(parseInt(sel.dataset.id, 10), sel.value));
+  document.querySelectorAll("[data-role-id]").forEach((sel) => {
+    sel.addEventListener("change", () => changeRole(parseInt(sel.dataset.roleId, 10), sel.value));
   });
 }
 
@@ -283,11 +215,11 @@ async function changeRole(id, newRole) {
       body: JSON.stringify({ role: newRole }),
     });
     if (!res.ok) throw await res.json();
-    toast("역할을 변경했습니다.");
-    await loadUsersAndRoles();
+    UI.toast("역할을 변경했습니다.", { type: "success" });
+    await loadAll();
   } catch (e) {
-    toast(e?.detail || "역할 변경에 실패했습니다.");
-    await loadUsersAndRoles();
+    UI.toast(e?.detail || "역할 변경에 실패했습니다.", { type: "danger" });
+    await loadAll();
   }
 }
 
@@ -296,35 +228,51 @@ async function doAction(act, id) {
   if (!user) return;
   try {
     if (act === "delete") {
-      if (!confirm(`사용자 ${user.username}을(를) 삭제하시겠습니까?`)) return;
+      const ok = await UI.confirm(`사용자 ${user.username}을(를) 삭제합니다.\n이 작업은 되돌릴 수 없습니다.`,
+        { title: "사용자 삭제", okText: "삭제", danger: true });
+      if (!ok) return;
       const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
       if (!res.ok) throw await res.json();
-      toast("삭제했습니다.");
+      UI.toast("삭제했습니다.", { type: "success" });
+
     } else if (act === "edit") {
-      const newName = prompt("이름:", user.name || "");
-      if (newName === null) return;
-      const newEmail = prompt("이메일 (비우면 삭제):", user.email || "");
-      if (newEmail === null) return;
-      const trimmedName = newName.trim();
-      if (!trimmedName) { toast("이름은 비울 수 없습니다."); return; }
+      const data = await UI.form({
+        title: "정보 수정",
+        description: `${user.username} 사용자의 이름과 이메일을 수정합니다.`,
+        fields: [
+          { name: "name", label: "이름", value: user.name || "", required: true, maxLength: 64 },
+          { name: "email", label: "이메일", value: user.email || "", placeholder: "비우면 삭제됩니다", maxLength: 200 },
+        ],
+        okText: "저장",
+      });
+      if (!data) return;
       const res = await fetch(`/api/users/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmedName, email: newEmail.trim() }),
+        body: JSON.stringify({ name: data.name.trim(), email: data.email.trim() }),
       });
       if (!res.ok) throw await res.json();
-      toast("정보를 수정했습니다.");
+      UI.toast("정보를 수정했습니다.", { type: "success" });
+
     } else if (act === "reset") {
-      const pw = prompt("새 비밀번호 (8자 이상):");
-      if (!pw) return;
-      if (pw.length < 8) { toast("8자 이상이어야 합니다."); return; }
+      const data = await UI.form({
+        title: "비밀번호 초기화",
+        description: `${user.username} 사용자의 새 비밀번호를 입력하세요.`,
+        fields: [
+          { name: "pw", label: "새 비밀번호", type: "password", required: true,
+            minLength: 8, placeholder: "8자 이상", autocomplete: "new-password" },
+        ],
+        okText: "초기화",
+      });
+      if (!data) return;
       const res = await fetch(`/api/users/${id}/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ new_password: pw }),
+        body: JSON.stringify({ new_password: data.pw }),
       });
       if (!res.ok) throw await res.json();
-      toast("비밀번호를 초기화했습니다.");
+      UI.toast("비밀번호를 초기화했습니다.", { type: "success" });
+
     } else if (act === "active") {
       const res = await fetch(`/api/users/${id}`, {
         method: "PATCH",
@@ -332,7 +280,8 @@ async function doAction(act, id) {
         body: JSON.stringify({ active: !user.active }),
       });
       if (!res.ok) throw await res.json();
-      toast(user.active ? "비활성화했습니다." : "활성화했습니다.");
+      UI.toast(user.active ? "비활성화했습니다." : "활성화했습니다.", { type: "success" });
+
     } else if (act === "unlock") {
       const res = await fetch(`/api/users/${id}`, {
         method: "PATCH",
@@ -340,11 +289,11 @@ async function doAction(act, id) {
         body: JSON.stringify({ unlock: true }),
       });
       if (!res.ok) throw await res.json();
-      toast("잠금을 해제했습니다.");
+      UI.toast("잠금을 해제했습니다.", { type: "success" });
     }
-    await loadUsersAndRoles();
+    await loadAll();
   } catch (e) {
-    toast(e?.detail || "처리 중 오류가 발생했습니다.");
+    UI.toast(e?.detail || "처리 중 오류가 발생했습니다.", { type: "danger" });
   }
 }
 
@@ -357,14 +306,15 @@ async function createUser() {
     password: $("new-password").value,
   };
   if (!payload.username || !payload.name || !payload.password) {
-    toast("아이디·이름·비밀번호는 필수입니다.");
+    UI.toast("아이디·이름·비밀번호는 필수입니다.", { type: "warning" });
     return;
   }
   if (payload.password.length < 8) {
-    toast("비밀번호는 8자 이상이어야 합니다.");
+    UI.toast("비밀번호는 8자 이상이어야 합니다.", { type: "warning" });
     return;
   }
-  $("create-btn").disabled = true;
+  const btn = $("create-btn");
+  btn.disabled = true;
   try {
     const res = await fetch("/api/users", {
       method: "POST",
@@ -374,12 +324,12 @@ async function createUser() {
     if (!res.ok) throw await res.json();
     ["new-username", "new-name", "new-email", "new-password"].forEach((id) => $(id).value = "");
     if (availableRoles.length) $("new-role").value = "agent";
-    toast("사용자를 추가했습니다.");
-    await loadUsersAndRoles();
+    UI.toast("사용자를 추가했습니다.", { type: "success" });
+    await loadAll();
   } catch (e) {
-    toast(e?.detail || "생성에 실패했습니다.");
+    UI.toast(e?.detail || "생성에 실패했습니다.", { type: "danger" });
   } finally {
-    $("create-btn").disabled = false;
+    btn.disabled = false;
   }
 }
 
@@ -391,7 +341,7 @@ document.addEventListener("auth-ready", (e) => {
     location.href = "/agent";
     return;
   }
-  loadUsersAndRoles();
+  loadAll();
 });
 </script>
 </body>

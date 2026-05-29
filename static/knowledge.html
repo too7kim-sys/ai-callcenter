@@ -4,240 +4,99 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>학습 데이터 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/ui.css" />
 <link rel="stylesheet" href="/assets/nav.css" />
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #f1f5f9;
-    color: #0f172a;
-    min-height: 100vh;
-  }
-  header {
-    background: #1d4ed8;
-    color: #fff;
-    padding: 18px 22px;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-  }
-  header .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  header h1 { font-size: 17px; font-weight: 700; }
-  header .sub { font-size: 12px; opacity: .85; margin-top: 3px; }
-  header .count {
-    font-size: 11px;
-    background: rgba(255, 255, 255, .22);
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-weight: 600;
-  }
   .controls {
-    background: #fff;
-    padding: 12px 22px;
-    border-bottom: 1px solid #e2e8f0;
+    background: var(--c-surface);
+    padding: var(--space-4) var(--space-6);
+    border-bottom: 1px solid var(--c-border);
     position: sticky;
-    top: 72px;
+    top: 60px;
     z-index: 9;
   }
-  .search {
-    width: 100%;
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    padding: 11px 14px;
-    font-size: 14px;
-    outline: none;
-  }
-  .search:focus { border-color: #1d4ed8; }
-  .stats {
-    margin-top: 8px;
-    font-size: 12px;
-    color: #64748b;
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .stats b { color: #0f172a; }
-  .container { max-width: 920px; margin: 0 auto; padding: 16px 22px 60px; }
   .item {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 14px 16px;
-    margin-bottom: 10px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4) var(--space-5);
+    margin-bottom: var(--space-3);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
+  .item:hover { border-color: var(--c-border-strong); box-shadow: var(--shadow-sm); }
   .item .head {
     display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-  .item .head .badges {
-    flex: 1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
     align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+    flex-wrap: wrap;
   }
-  .id-chip {
-    font-size: 11px;
-    color: #1d4ed8;
-    background: #eff6ff;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-weight: 700;
-  }
-  .date {
-    font-size: 11px;
-    color: #94a3b8;
-  }
-  .flag {
-    font-size: 10.5px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-weight: 700;
-  }
-  .flag.ok { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
-  .flag.no { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
-  .flag.emb { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
-  .head-btn {
-    flex-shrink: 0;
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-    background: #fff;
-  }
-  .edit-btn { border: 1px solid #cbd5e1; color: #1d4ed8; }
-  .edit-btn:hover { background: #eff6ff; }
-  .del-btn { border: 1px solid #fecaca; color: #b91c1c; }
-  .del-btn:hover { background: #fef2f2; }
-  .edit-form {
-    margin-top: 10px;
-    padding: 12px;
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-  }
-  .edit-form label {
-    display: block;
-    font-size: 11px;
-    color: #64748b;
-    font-weight: 700;
-    margin-bottom: 4px;
-    margin-top: 8px;
-  }
-  .edit-form label:first-child { margin-top: 0; }
-  .edit-form textarea {
-    width: 100%;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    padding: 8px 10px;
-    font-size: 13px;
-    font-family: inherit;
-    resize: vertical;
-    outline: none;
-  }
-  .edit-form textarea:focus { border-color: #1d4ed8; }
-  .edit-form .actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 10px; }
-  .edit-form .actions button {
-    font-size: 12px;
-    padding: 6px 14px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-  }
-  .edit-form .save { background: #1d4ed8; color: #fff; border: 1px solid #1d4ed8; }
-  .edit-form .cancel { background: #fff; color: #475569; border: 1px solid #cbd5e1; }
-  .src {
-    font-size: 12px;
-    color: #475569;
+  .item .head .actions { margin-left: auto; display: flex; gap: 6px; }
+  .item .src {
+    font-size: var(--text-sm);
+    color: var(--c-text-muted);
     margin-bottom: 6px;
   }
-  .src a {
-    color: #1d4ed8;
-    text-decoration: none;
-    font-weight: 600;
-  }
-  .src a:hover { text-decoration: underline; }
-  .q {
-    font-size: 14px;
-    color: #0f172a;
-    font-weight: 700;
-    line-height: 1.5;
+  .item .q {
+    font-size: var(--text-base);
+    color: var(--c-text);
+    font-weight: var(--fw-bold);
+    line-height: var(--leading-tight);
     margin: 4px 0;
   }
-  .q::before { content: "Q. "; color: #1d4ed8; }
-  .a {
-    font-size: 13.5px;
-    color: #334155;
-    line-height: 1.65;
+  .item .q::before { content: "Q. "; color: var(--c-brand-700); }
+  .item .a {
+    font-size: var(--text-base);
+    color: var(--c-text-muted);
+    line-height: var(--leading-base);
     white-space: pre-wrap;
     word-break: break-word;
   }
-  .a::before { content: "A. "; color: #059669; font-weight: 700; }
-  .empty {
-    text-align: center;
-    color: #94a3b8;
-    font-size: 14px;
-    padding: 60px 0;
-    line-height: 1.6;
-  }
+  .item .a::before { content: "A. "; color: var(--c-success); font-weight: var(--fw-bold); }
   mark {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--c-warning-bg);
+    color: var(--c-warning);
     padding: 0 2px;
-    border-radius: 2px;
-  }
-  .nav-link {
-    color: #fff;
-    text-decoration: none;
-    font-size: 12px;
-    opacity: .9;
-    margin-right: 12px;
-  }
-  .nav-link:hover { text-decoration: underline; }
-  @media (max-width: 600px) {
-    header, .controls { padding-left: 16px; padding-right: 16px; }
-    .container { padding: 12px 16px 60px; }
+    border-radius: 3px;
   }
 </style>
 </head>
 <body>
 <header id="app-nav"></header>
-<header>
-  <div class="row">
-    <div>
-      <h1>학습 데이터 관리</h1>
-      <div class="sub">종료된 상담에서 자동 학습된 (질문 → 답변) 지식</div>
-    </div>
-    <span class="count" id="count">·</span>
+
+<header class="page-header">
+  <div>
+    <div class="title">학습 데이터 관리</div>
+    <div class="subtitle">종료된 상담에서 자동 학습된 (질문 → 답변) 지식</div>
+  </div>
+  <div class="meta">
+    <span class="chip chip-brand" id="count-chip">·</span>
   </div>
 </header>
 
 <div class="controls">
-  <input class="search" id="search" placeholder="질문·답변으로 검색하세요" autocomplete="off" />
-  <div class="stats" id="stats"></div>
+  <input class="input" id="search" placeholder="질문·답변·고객명으로 검색하세요" autocomplete="off" />
+  <div class="stat-row" style="margin-top: var(--space-3); margin-bottom: 0">
+    <div class="stat"><div class="label">총 항목</div><div class="value" id="s-total">0</div></div>
+    <div class="stat"><div class="label">FAQ 노출</div><div class="value" id="s-visible">0</div></div>
+    <div class="stat"><div class="label">FAQ 비노출 (짧음)</div><div class="value" id="s-hidden">0</div></div>
+    <div class="stat"><div class="label">임베딩 보유</div><div class="value" id="s-emb">0</div></div>
+  </div>
 </div>
 
-<div class="container">
+<div class="page-container">
   <div id="list"></div>
 </div>
 
+<script src="/assets/ui.js"></script>
+<script src="/assets/nav.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let allItems = [];
 let searchText = "";
 
-function escapeHtml(text) {
-  const d = document.createElement("div");
-  d.textContent = text == null ? "" : String(text);
-  return d.innerHTML;
-}
-
 function highlight(text, query) {
-  const safe = escapeHtml(text);
+  const safe = UI.escapeHtml(text);
   if (!query) return safe;
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return safe.replace(new RegExp(escaped, "gi"), "<mark>$&</mark>");
@@ -258,11 +117,18 @@ async function init() {
     if (!res.ok) throw new Error();
     allItems = await res.json();
   } catch (e) {
-    $("list").innerHTML = '<div class="empty">학습 데이터를 불러올 수 없습니다.</div>';
+    $("list").innerHTML = emptyState("학습 데이터를 불러올 수 없습니다.", "잠시 후 다시 시도해 주세요.");
     return;
   }
-  $("count").textContent = `${allItems.length}건`;
   render();
+}
+
+function emptyState(title, desc) {
+  return `<div class="empty-state">
+    <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="9"/></svg></div>
+    <div class="title">${UI.escapeHtml(title)}</div>
+    <div class="desc">${UI.escapeHtml(desc)}</div>
+  </div>`;
 }
 
 function render() {
@@ -279,113 +145,100 @@ function render() {
   const total = allItems.length;
   const visible = allItems.filter((i) => i.faq_visible).length;
   const embedded = allItems.filter((i) => i.has_embedding).length;
-  const hidden = total - visible;
-  $("stats").innerHTML =
-    `<span>총 <b>${total}</b>건</span>` +
-    `<span>FAQ 노출 <b>${visible}</b></span>` +
-    `<span>FAQ 비노출 <b>${hidden}</b> (짧은 답변)</span>` +
-    `<span>임베딩 <b>${embedded}</b></span>` +
-    (q ? `<span style="margin-left:auto">검색 결과 ${filtered.length}건</span>` : "");
+  $("s-total").textContent = total;
+  $("s-visible").textContent = visible;
+  $("s-hidden").textContent = total - visible;
+  $("s-emb").textContent = embedded;
+  $("count-chip").textContent = `${total}건`;
 
   if (!total) {
-    $("list").innerHTML =
-      '<div class="empty">아직 학습된 상담이 없습니다.<br />' +
-      "상담원이 답변한 상담을 '종료' 상태로 바꾸면 자동으로 학습됩니다.</div>";
+    $("list").innerHTML = emptyState(
+      "아직 학습된 상담이 없습니다",
+      "상담원이 답변한 상담을 '종료' 상태로 바꾸면 자동으로 학습됩니다."
+    );
     return;
   }
   if (!filtered.length) {
-    $("list").innerHTML = '<div class="empty">조건에 맞는 항목이 없습니다.</div>';
+    $("list").innerHTML = emptyState("검색 결과가 없습니다", "다른 검색어를 입력해 보세요.");
     return;
   }
 
   $("list").innerHTML = filtered.map((it) => {
     const faqFlag = it.faq_visible
-      ? '<span class="flag ok">FAQ 노출</span>'
-      : '<span class="flag no">FAQ 비노출 (짧음)</span>';
+      ? '<span class="chip chip-success">FAQ 노출</span>'
+      : '<span class="chip chip-neutral">FAQ 비노출 (짧음)</span>';
     const embFlag = it.has_embedding
-      ? '<span class="flag emb">임베딩 ✓</span>'
-      : '<span class="flag no">임베딩 ✗</span>';
-    return (
-      `<div class="item">` +
-      `<div class="head">` +
-      `<div class="badges">` +
-      `<span class="id-chip">#L${it.id}</span>` +
-      `<span class="date">학습 ${escapeHtml(formatDate(it.created_at))}</span>` +
-      faqFlag + embFlag +
-      `</div>` +
-      `<button class="head-btn edit-btn" data-edit="${it.id}">수정</button>` +
-      `<button class="head-btn del-btn" data-id="${it.id}">삭제</button>` +
-      `</div>` +
-      `<div class="src">출처: ${escapeHtml(it.customer_name || "(이름 없음)")} · ` +
-      `<a href="/agent?conv=${it.conversation_id}">상담 #${it.conversation_id}</a> ` +
-      `(${escapeHtml(it.conversation_status || "-")})</div>` +
-      `<div class="q" id="q-${it.id}">${highlight(it.question || "", q)}</div>` +
-      `<div class="a" id="a-${it.id}">${highlight(it.answer || "", q)}</div>` +
-      `<div id="edit-${it.id}"></div>` +
-      `</div>`
-    );
+      ? '<span class="chip chip-info">임베딩 ✓</span>'
+      : '<span class="chip chip-neutral">임베딩 ✗</span>';
+    return `
+      <div class="item">
+        <div class="head">
+          <span class="chip chip-brand">#L${it.id}</span>
+          <span class="faint" style="font-size:var(--text-xs)">학습 ${UI.escapeHtml(formatDate(it.created_at))}</span>
+          ${faqFlag}${embFlag}
+          <div class="actions">
+            <button class="btn btn-secondary btn-xs" data-edit="${it.id}">수정</button>
+            <button class="btn btn-danger btn-xs" data-del="${it.id}">삭제</button>
+          </div>
+        </div>
+        <div class="src">출처: ${UI.escapeHtml(it.customer_name || "(이름 없음)")} ·
+          <a href="/agent?conv=${it.conversation_id}">상담 #${it.conversation_id}</a>
+          (${UI.escapeHtml(it.conversation_status || "-")})</div>
+        <div class="q">${highlight(it.question || "", q)}</div>
+        <div class="a">${highlight(it.answer || "", q)}</div>
+      </div>`;
   }).join("");
 
-  document.querySelectorAll(".del-btn").forEach((b) => {
-    b.addEventListener("click", () => deleteItem(parseInt(b.dataset.id, 10)));
+  document.querySelectorAll("[data-edit]").forEach((b) => {
+    b.addEventListener("click", () => editItem(parseInt(b.dataset.edit, 10)));
   });
-  document.querySelectorAll(".edit-btn").forEach((b) => {
-    b.addEventListener("click", () => openEdit(parseInt(b.dataset.edit, 10)));
+  document.querySelectorAll("[data-del]").forEach((b) => {
+    b.addEventListener("click", () => deleteItem(parseInt(b.dataset.del, 10)));
   });
 }
 
-function openEdit(id) {
-  const item = allItems.find((it) => it.id === id);
-  if (!item) return;
-  const slot = $("edit-" + id);
-  // 토글: 이미 열려있으면 닫기
-  if (slot.innerHTML.trim()) { slot.innerHTML = ""; return; }
-  slot.innerHTML =
-    `<div class="edit-form">` +
-    `<label>질문</label>` +
-    `<textarea id="eq-${id}" rows="2">${escapeHtml(item.question || "")}</textarea>` +
-    `<label>답변</label>` +
-    `<textarea id="ea-${id}" rows="4">${escapeHtml(item.answer || "")}</textarea>` +
-    `<div class="actions">` +
-    `<button class="cancel" data-cancel="${id}">취소</button>` +
-    `<button class="save" data-save="${id}">저장</button>` +
-    `</div></div>`;
-  slot.querySelector("[data-cancel]").addEventListener("click", () => { slot.innerHTML = ""; });
-  slot.querySelector("[data-save]").addEventListener("click", () => saveEdit(id));
-  $("eq-" + id).focus();
-}
-
-async function saveEdit(id) {
-  const newQ = $("eq-" + id).value.trim();
-  const newA = $("ea-" + id).value.trim();
-  if (!newQ) { alert("질문을 비울 수 없습니다."); return; }
-  if (!newA) { alert("답변을 비울 수 없습니다."); return; }
+async function editItem(id) {
+  const it = allItems.find((x) => x.id === id);
+  if (!it) return;
+  const data = await UI.form({
+    title: "학습 데이터 수정",
+    description: `상담 #${it.conversation_id} 에서 학습된 항목을 수정합니다. 질문을 바꾸면 임베딩이 재계산됩니다.`,
+    fields: [
+      { name: "question", label: "질문", type: "textarea", value: it.question || "", required: true, rows: 2 },
+      { name: "answer",   label: "답변", type: "textarea", value: it.answer || "",   required: true, rows: 5 },
+    ],
+    okText: "저장",
+    wide: true,
+  });
+  if (!data) return;
   try {
     const res = await fetch(`/api/knowledge/items/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: newQ, answer: newA }),
+      body: JSON.stringify({ question: data.question.trim(), answer: data.answer.trim() }),
     });
-    if (!res.ok) {
-      let msg = "수정에 실패했습니다.";
-      try { msg = (await res.json()).detail || msg; } catch (e) {}
-      alert(msg);
-      return;
-    }
+    if (!res.ok) throw await res.json();
+    UI.toast("수정했습니다.", { type: "success" });
     await init();
   } catch (e) {
-    alert("수정 중 오류가 발생했습니다.");
+    UI.toast(e?.detail || "수정 중 오류가 발생했습니다.", { type: "danger" });
   }
 }
 
 async function deleteItem(id) {
-  if (!confirm(`학습 항목 #L${id}을(를) 삭제하시겠습니까?\n(상담을 다시 '종료' 처리하면 재학습될 수 있습니다.)`)) return;
+  const it = allItems.find((x) => x.id === id);
+  const ok = await UI.confirm(
+    `학습 항목 #L${id} 을(를) 삭제합니다.\n상담을 다시 '종료' 처리하면 재학습될 수 있습니다.`,
+    { title: "학습 항목 삭제", okText: "삭제", danger: true }
+  );
+  if (!ok) return;
   try {
     const res = await fetch(`/api/knowledge/items/${id}`, { method: "DELETE" });
     if (!res.ok) throw new Error("삭제 실패");
+    UI.toast("삭제했습니다.", { type: "success" });
     await init();
   } catch (e) {
-    alert("삭제 중 오류가 발생했습니다.");
+    UI.toast("삭제 중 오류가 발생했습니다.", { type: "danger" });
   }
 }
 
@@ -396,6 +249,5 @@ $("search").addEventListener("input", (e) => {
 
 document.addEventListener("auth-ready", init);
 </script>
-<script src="/assets/nav.js"></script>
 </body>
 </html>

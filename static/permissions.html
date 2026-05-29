@@ -4,211 +4,124 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>권한 관리 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/ui.css" />
 <link rel="stylesheet" href="/assets/nav.css" />
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #f1f5f9;
-    color: #0f172a;
-    min-height: 100vh;
-  }
-  .container { max-width: 980px; margin: 0 auto; padding: 22px; }
-  .page-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-  }
-  .page-head h1 { font-size: 18px; font-weight: 700; }
-  .page-head .sub { font-size: 12px; color: #64748b; margin-top: 3px; }
-  .panel {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 18px;
-    margin-bottom: 14px;
-  }
-  .panel h2 {
-    font-size: 14px;
-    font-weight: 700;
-    color: #1d4ed8;
-    margin-bottom: 12px;
-  }
-  .new-form {
-    display: grid;
-    grid-template-columns: 200px 1fr auto;
-    gap: 8px;
-  }
-  input, button, select {
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    padding: 9px 11px;
-    font-size: 13px;
-    outline: none;
-    font-family: inherit;
-    background: #fff;
-  }
-  input:focus { border-color: #1d4ed8; }
-  button {
-    cursor: pointer;
-    font-weight: 600;
-    color: #334155;
-  }
-  button.primary { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
-  button.danger { background: #fff; color: #b91c1c; border-color: #fecaca; }
-  button:disabled { opacity: .6; cursor: progress; }
   .role-card {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    margin-bottom: 10px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-3);
     overflow: hidden;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
+  .role-card:hover { border-color: var(--c-border-strong); box-shadow: var(--shadow-sm); }
   .role-head {
     display: flex;
     align-items: center;
-    padding: 14px 18px;
-    gap: 10px;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
   }
-  .role-head .name { font-weight: 700; font-size: 14.5px; }
-  .role-head .desc { color: #64748b; font-size: 12px; flex: 1; }
-  .role-head .meta { color: #94a3b8; font-size: 11.5px; }
-  .role-chip {
-    font-size: 10.5px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-weight: 700;
-  }
-  .role-chip.system { background: #fef3c7; color: #92400e; }
-  .role-chip.custom { background: #eff6ff; color: #1d4ed8; }
-  .role-chip.admin  { background: #fef2f2; color: #b91c1c; }
+  .role-name { font-weight: var(--fw-bold); font-size: var(--text-md); }
+  .role-desc { color: var(--c-text-muted); font-size: var(--text-sm); flex: 1; }
+  .role-meta { color: var(--c-text-faint); font-size: var(--text-xs); }
   .role-body {
-    border-top: 1px solid #f1f5f9;
-    padding: 14px 18px;
-    background: #f8fafc;
+    border-top: 1px solid var(--c-border);
+    padding: var(--space-4) var(--space-5);
+    background: var(--c-surface-alt);
     display: none;
   }
-  .role-body.open { display: block; }
-  .perm-group { margin-bottom: 12px; }
+  .role-body.open { display: block; animation: slide-up var(--transition-base); }
+  .perm-group { margin-bottom: var(--space-4); }
+  .perm-group:last-child { margin-bottom: 0; }
   .perm-group h4 {
-    font-size: 11.5px;
-    color: #64748b;
+    font-size: var(--text-xs);
+    color: var(--c-text-muted);
     text-transform: uppercase;
-    font-weight: 700;
-    margin-bottom: 6px;
-    letter-spacing: .5px;
+    font-weight: var(--fw-bold);
+    margin-bottom: 8px;
+    letter-spacing: .06em;
   }
   .perm-list {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 14px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 6px 18px;
   }
   .perm-item {
     display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    padding: 3px 0;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
   }
   .perm-item input[type=checkbox] {
     width: 16px;
     height: 16px;
-    margin: 0;
+    margin: 2px 0 0;
     cursor: pointer;
+    accent-color: var(--c-brand-700);
   }
-  .perm-item label { cursor: pointer; flex: 1; color: #334155; }
-  .perm-item .key { font-size: 10.5px; color: #94a3b8; font-family: ui-monospace, monospace; }
+  .perm-item label { cursor: pointer; flex: 1; color: var(--c-text); font-size: var(--text-base); }
+  .perm-item .key { font-size: var(--text-xs); color: var(--c-text-faint); font-family: var(--font-mono); margin-left: 4px; }
   .role-actions {
     display: flex;
-    gap: 6px;
-    margin-top: 10px;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
     justify-content: flex-end;
   }
-  .role-actions button { padding: 6px 14px; font-size: 12.5px; }
-  .toggle-btn {
-    background: #fff;
-    border: 1px solid #cbd5e1;
-    padding: 5px 12px;
-    font-size: 12px;
-    border-radius: 8px;
-    color: #475569;
-    cursor: pointer;
+  .new-form-row {
+    display: grid;
+    grid-template-columns: 1fr 2fr auto;
+    gap: var(--space-2);
+    align-items: flex-end;
   }
-  .toggle-btn:hover { background: #f1f5f9; }
-  .empty-text {
-    color: #94a3b8;
-    font-size: 13px;
-    padding: 18px;
-    text-align: center;
-  }
-  .toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #0f172a;
-    color: #fff;
-    padding: 10px 18px;
-    border-radius: 8px;
-    font-size: 13px;
-    z-index: 100;
-    opacity: 0;
-    transition: opacity .2s;
-  }
-  .toast.show { opacity: 1; }
   @media (max-width: 720px) {
-    .new-form { grid-template-columns: 1fr; }
-    .perm-list { grid-template-columns: 1fr; }
+    .new-form-row { grid-template-columns: 1fr; }
   }
 </style>
 </head>
 <body>
 <header id="app-nav"></header>
 
-<div class="container">
-  <div class="page-head">
-    <div>
-      <h1>권한 관리</h1>
-      <div class="sub">역할별로 권한을 설정하여 사용자 접근을 제어합니다.</div>
-    </div>
+<header class="page-header">
+  <div>
+    <div class="title">권한 관리</div>
+    <div class="subtitle">역할별로 권한을 설정하여 사용자 접근을 제어합니다.</div>
   </div>
+  <div class="meta">
+    <span class="chip" id="role-count">·</span>
+  </div>
+</header>
 
-  <div class="panel">
-    <h2>신규 역할 추가</h2>
-    <div class="new-form">
-      <input id="new-name" placeholder="역할 이름 (영문/숫자/._-)" />
-      <input id="new-desc" placeholder="설명 (선택)" />
-      <button class="primary" id="create-btn">추가</button>
+<div class="page-container">
+  <section class="card" style="margin-bottom: var(--space-4)">
+    <div class="card-head">
+      <div class="title">신규 역할 추가</div>
+      <div class="subtitle">추가 후 '권한 편집'에서 권한을 부여하세요.</div>
     </div>
-    <div style="font-size:11.5px;color:#94a3b8;margin-top:8px">
-      추가 후 아래 목록에서 '권한 편집'으로 권한을 부여하세요.
+    <div class="card-body">
+      <div class="new-form-row">
+        <div class="field" style="margin:0">
+          <div class="label">역할 이름</div>
+          <input class="input" id="new-name" placeholder="영문/숫자/._-" />
+        </div>
+        <div class="field" style="margin:0">
+          <div class="label">설명 (선택)</div>
+          <input class="input" id="new-desc" placeholder="역할 설명" />
+        </div>
+        <button class="btn btn-primary" id="create-btn">추가</button>
+      </div>
     </div>
-  </div>
+  </section>
 
   <div id="roles-list"></div>
 </div>
 
-<div class="toast" id="toast"></div>
-
+<script src="/assets/ui.js"></script>
 <script src="/assets/nav.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-let catalog = [];   // [{key, description, group}]
-let roles = [];     // [{id, name, description, is_system, permissions, user_count, all_permissions}]
-
-function escapeHtml(t) {
-  const d = document.createElement("div");
-  d.textContent = t == null ? "" : String(t);
-  return d.innerHTML;
-}
-
-function toast(text) {
-  const t = $("toast");
-  t.textContent = text;
-  t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 2200);
-}
+let catalog = [];
+let roles = [];
 
 async function loadAll() {
   try {
@@ -221,76 +134,67 @@ async function loadAll() {
     roles = await rolesRes.json();
     render();
   } catch (e) {
-    $("roles-list").innerHTML = '<div class="empty-text">권한 정보를 불러오지 못했습니다.</div>';
+    $("roles-list").innerHTML = `<div class="empty-state"><div class="title">권한 정보를 불러올 수 없습니다</div></div>`;
   }
 }
 
 function permRowsForRole(role) {
-  // catalog 그룹별로 묶어 렌더
   const groups = {};
-  catalog.forEach((p) => {
-    (groups[p.group] = groups[p.group] || []).push(p);
-  });
+  catalog.forEach((p) => { (groups[p.group] = groups[p.group] || []).push(p); });
   const checked = new Set(role.permissions || []);
   const editable = !role.all_permissions;
-  let html = "";
-  Object.entries(groups).forEach(([gname, perms]) => {
-    html += `<div class="perm-group"><h4>${escapeHtml(gname)}</h4><div class="perm-list">`;
-    perms.forEach((p) => {
-      const isChecked = role.all_permissions || checked.has(p.key);
-      html += `
-        <div class="perm-item">
-          <input type="checkbox" id="r${role.id}-${p.key}" data-key="${p.key}"
-                 ${isChecked ? "checked" : ""} ${editable ? "" : "disabled"} />
-          <label for="r${role.id}-${p.key}">
-            ${escapeHtml(p.description)}
-            <span class="key"> · ${escapeHtml(p.key)}</span>
-          </label>
-        </div>`;
-    });
-    html += `</div></div>`;
-  });
-  return html;
+  return Object.entries(groups).map(([gname, perms]) => `
+    <div class="perm-group">
+      <h4>${UI.escapeHtml(gname)}</h4>
+      <div class="perm-list">
+        ${perms.map((p) => {
+          const isChecked = role.all_permissions || checked.has(p.key);
+          return `<div class="perm-item">
+            <input type="checkbox" id="r${role.id}-${p.key}" data-key="${p.key}"
+                   ${isChecked ? "checked" : ""} ${editable ? "" : "disabled"} />
+            <label for="r${role.id}-${p.key}">${UI.escapeHtml(p.description)}<span class="key">${UI.escapeHtml(p.key)}</span></label>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>
+  `).join("");
 }
 
 function render() {
-  const box = $("roles-list");
+  $("role-count").textContent = `${roles.length}개 역할`;
   if (!roles.length) {
-    box.innerHTML = '<div class="empty-text">등록된 역할이 없습니다.</div>';
+    $("roles-list").innerHTML = `<div class="empty-state"><div class="title">등록된 역할이 없습니다</div></div>`;
     return;
   }
-  box.innerHTML = roles.map((r) => {
+  $("roles-list").innerHTML = roles.map((r) => {
     const chip = r.name === "admin"
-      ? '<span class="role-chip admin">관리자 (전체 권한)</span>'
+      ? '<span class="chip chip-warning">관리자 · 전체 권한</span>'
       : r.is_system
-        ? '<span class="role-chip system">시스템</span>'
-        : '<span class="role-chip custom">커스텀</span>';
+        ? '<span class="chip chip-neutral">시스템</span>'
+        : '<span class="chip chip-info">커스텀</span>';
     const permCount = r.all_permissions ? "전체" : (r.permissions || []).length;
     const editable = !r.all_permissions;
     return `
       <div class="role-card" data-role-id="${r.id}">
         <div class="role-head">
-          <div class="name">${escapeHtml(r.name)}</div>
+          <span class="role-name">${UI.escapeHtml(r.name)}</span>
           ${chip}
-          <div class="desc">${escapeHtml(r.description || "")}</div>
-          <div class="meta">권한 ${permCount} · 사용자 ${r.user_count}명</div>
-          <button class="toggle-btn" data-toggle="${r.id}">${editable ? "권한 편집" : "권한 보기"}</button>
+          <span class="role-desc">${UI.escapeHtml(r.description || "")}</span>
+          <span class="role-meta">권한 ${permCount} · 사용자 ${r.user_count}명</span>
+          <button class="btn btn-secondary btn-sm" data-toggle="${r.id}">${editable ? "권한 편집" : "권한 보기"}</button>
         </div>
         <div class="role-body" id="role-body-${r.id}">
           ${permRowsForRole(r)}
           <div class="role-actions">
-            ${editable ? `<button class="primary" data-save="${r.id}">저장</button>` : ""}
-            ${!r.is_system ? `<button class="danger" data-delete="${r.id}">역할 삭제</button>` : ""}
+            ${editable ? `<button class="btn btn-primary btn-sm" data-save="${r.id}">저장</button>` : ""}
+            ${!r.is_system ? `<button class="btn btn-danger btn-sm" data-delete="${r.id}">역할 삭제</button>` : ""}
           </div>
         </div>
       </div>`;
   }).join("");
 
   document.querySelectorAll("[data-toggle]").forEach((b) => {
-    b.addEventListener("click", () => {
-      const id = b.dataset.toggle;
-      $("role-body-" + id).classList.toggle("open");
-    });
+    b.addEventListener("click", () => $("role-body-" + b.dataset.toggle).classList.toggle("open"));
   });
   document.querySelectorAll("[data-save]").forEach((b) => {
     b.addEventListener("click", () => saveRole(parseInt(b.dataset.save, 10)));
@@ -312,32 +216,37 @@ async function saveRole(id) {
       body: JSON.stringify({ permissions: keys }),
     });
     if (!res.ok) throw await res.json();
-    toast("권한을 저장했습니다.");
+    UI.toast("권한을 저장했습니다.", { type: "success" });
     await loadAll();
   } catch (e) {
-    toast(e?.detail || "저장에 실패했습니다.");
+    UI.toast(e?.detail || "저장에 실패했습니다.", { type: "danger" });
   }
 }
 
 async function deleteRole(id) {
   const role = roles.find((r) => r.id === id);
   if (!role) return;
-  if (!confirm(`역할 '${role.name}'을(를) 삭제하시겠습니까?\n사용 중인 사용자가 있으면 삭제할 수 없습니다.`)) return;
+  const ok = await UI.confirm(
+    `역할 '${role.name}' 을(를) 삭제합니다.\n사용 중인 사용자가 있으면 삭제할 수 없습니다.`,
+    { title: "역할 삭제", okText: "삭제", danger: true }
+  );
+  if (!ok) return;
   try {
     const res = await fetch(`/api/roles/${id}`, { method: "DELETE" });
     if (!res.ok) throw await res.json();
-    toast("역할을 삭제했습니다.");
+    UI.toast("역할을 삭제했습니다.", { type: "success" });
     await loadAll();
   } catch (e) {
-    toast(e?.detail || "삭제에 실패했습니다.");
+    UI.toast(e?.detail || "삭제에 실패했습니다.", { type: "danger" });
   }
 }
 
 async function createRole() {
   const name = $("new-name").value.trim();
   const description = $("new-desc").value.trim();
-  if (!name) { toast("역할 이름을 입력해 주세요."); return; }
-  $("create-btn").disabled = true;
+  if (!name) { UI.toast("역할 이름을 입력해 주세요.", { type: "warning" }); return; }
+  const btn = $("create-btn");
+  btn.disabled = true;
   try {
     const res = await fetch("/api/roles", {
       method: "POST",
@@ -347,12 +256,12 @@ async function createRole() {
     if (!res.ok) throw await res.json();
     $("new-name").value = "";
     $("new-desc").value = "";
-    toast("역할을 추가했습니다. 권한 편집으로 권한을 부여하세요.");
+    UI.toast("역할을 추가했습니다. 권한 편집으로 권한을 부여하세요.", { type: "success" });
     await loadAll();
   } catch (e) {
-    toast(e?.detail || "추가에 실패했습니다.");
+    UI.toast(e?.detail || "추가에 실패했습니다.", { type: "danger" });
   } finally {
-    $("create-btn").disabled = false;
+    btn.disabled = false;
   }
 }
 
