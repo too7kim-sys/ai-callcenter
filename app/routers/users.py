@@ -2,9 +2,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import auth, security
+from .. import auth, permissions, security
 from ..database import get_db
-from ..models import AgentUser
+from ..models import AgentUser, Role
 from ..schemas import AdminResetRequest, UserCreateRequest, UserUpdateRequest
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -25,7 +25,7 @@ def _serialize(user: AgentUser) -> dict:
 
 
 @router.get("")
-def list_users(_admin=Depends(auth.require_admin), db: Session = Depends(get_db)):
+def list_users(_user=Depends(auth.require_permission(permissions.P.USER_MANAGE)), db: Session = Depends(get_db)):
     rows = db.query(AgentUser).order_by(AgentUser.id).all()
     return [_serialize(u) for u in rows]
 
@@ -33,7 +33,7 @@ def list_users(_admin=Depends(auth.require_admin), db: Session = Depends(get_db)
 @router.post("")
 def create_user(
     payload: UserCreateRequest,
-    _admin=Depends(auth.require_admin),
+    _user=Depends(auth.require_permission(permissions.P.USER_MANAGE)),
     db: Session = Depends(get_db),
 ):
     username = payload.username.lower().strip()
@@ -41,7 +41,9 @@ def create_user(
         raise HTTPException(status_code=400, detail="아이디는 영문/숫자/._- 만 사용 가능합니다.")
     if db.query(AgentUser).filter(AgentUser.username == username).first():
         raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다.")
-    role = payload.role if payload.role in auth.VALID_ROLES else auth.ROLE_AGENT
+    role = (payload.role or permissions.ROLE_AGENT).strip().lower()
+    if db.query(Role).filter(Role.name == role).first() is None:
+        raise HTTPException(status_code=400, detail="존재하지 않는 역할입니다.")
     user = AgentUser(
         username=username,
         name=payload.name.strip(),
@@ -60,7 +62,7 @@ def create_user(
 def update_user(
     user_id: int,
     payload: UserUpdateRequest,
-    admin=Depends(auth.require_admin),
+    acting_user=Depends(auth.require_permission(permissions.P.USER_MANAGE)),
     db: Session = Depends(get_db),
 ):
     user = db.get(AgentUser, user_id)
@@ -71,13 +73,14 @@ def update_user(
     if payload.email is not None:
         user.email = payload.email.strip() or None
     if payload.role is not None:
-        if payload.role not in auth.VALID_ROLES:
-            raise HTTPException(status_code=400, detail="유효하지 않은 역할입니다.")
-        if user.id == admin.id and payload.role != auth.ROLE_ADMIN:
+        new_role = payload.role.strip().lower()
+        if db.query(Role).filter(Role.name == new_role).first() is None:
+            raise HTTPException(status_code=400, detail="존재하지 않는 역할입니다.")
+        if user.id == acting_user.id and new_role != permissions.ROLE_ADMIN:
             raise HTTPException(status_code=400, detail="본인 관리자 권한은 해제할 수 없습니다.")
-        user.role = payload.role
+        user.role = new_role
     if payload.active is not None:
-        if user.id == admin.id and not payload.active:
+        if user.id == acting_user.id and not payload.active:
             raise HTTPException(status_code=400, detail="본인 계정은 비활성화할 수 없습니다.")
         user.active = bool(payload.active)
         if not user.active:
@@ -94,7 +97,7 @@ def update_user(
 def admin_reset_password(
     user_id: int,
     payload: AdminResetRequest,
-    _admin=Depends(auth.require_admin),
+    _user=Depends(auth.require_permission(permissions.P.USER_MANAGE)),
     db: Session = Depends(get_db),
 ):
     user = db.get(AgentUser, user_id)
@@ -111,7 +114,7 @@ def admin_reset_password(
 @router.delete("/{user_id}")
 def delete_user(
     user_id: int,
-    admin=Depends(auth.require_admin),
+    acting_user=Depends(auth.require_permission(permissions.P.USER_MANAGE)),
     db: Session = Depends(get_db),
 ):
     if user_id == admin.id:

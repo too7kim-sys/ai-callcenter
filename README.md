@@ -94,6 +94,38 @@ python run.py
 - 음성 인식을 지원하지 않는 브라우저(예: 일부 iOS Safari)에서는 마이크 버튼이
   자동으로 숨겨지고 텍스트 입력으로 이용할 수 있습니다.
 
+## 권한·역할 관리
+
+세분화된 권한 카탈로그 기반으로 역할별 접근 제어가 적용됩니다.
+
+**권한 카탈로그(11개):**
+
+| 그룹 | 키 | 설명 |
+| --- | --- | --- |
+| 상담 | `conversation.view` | 상담 목록·상세 조회 |
+| 상담 | `conversation.reply` | 상담원 답변 전송 |
+| 상담 | `conversation.analyze` | 상담 요약·분류 실행 |
+| 상담 | `conversation.recommend` | 답변 추천 받기 |
+| 상담 | `conversation.close` | 상담 종료 (학습 트리거) |
+| 학습 | `knowledge.view` | 학습 데이터 조회 |
+| 학습 | `knowledge.delete` | 학습 데이터 삭제 |
+| FAQ | `faq.view` | FAQ 조회 |
+| 고객 지원 | `password.assist` | 고객 비밀번호 재설정 지원 |
+| 관리 | `user.manage` | 콜센터 사용자 관리 |
+| 관리 | `permission.manage` | 권한·역할 관리 |
+
+**시스템 역할(자동 시드):**
+- `admin` — **항상 모든 권한**(자가-잠금 방지를 위해 코드 상수로 처리). 권한 편집 불가.
+- `agent` — 일상 응대 권한(상담 5종 + `knowledge.view` + `faq.view` + `password.assist`).
+  시스템 역할이지만 권한 편집 가능, 삭제는 불가.
+
+**커스텀 역할:** 관리자가 `/permissions` 페이지에서 추가/편집/삭제 가능. 사용 중인
+사용자가 있는 역할은 삭제할 수 없습니다.
+
+각 API 엔드포인트는 `Depends(require_permission(key))` 로 보호되며, 권한이
+없으면 **403** 을 반환합니다. 상단 메뉴는 사용자가 가진 권한에 따라 자동으로
+노출/숨김 처리됩니다.
+
 ## 콜센터 사용자 인증 (상담원·관리자)
 
 상담원·관리자용 화면(`/agent`, `/knowledge`, `/faq`, `/users`)과 API는 모두

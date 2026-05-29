@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>학습 데이터 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/nav.css" />
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -166,18 +167,14 @@
 </style>
 </head>
 <body>
+<header id="app-nav"></header>
 <header>
   <div class="row">
     <div>
       <h1>학습 데이터 관리</h1>
       <div class="sub">종료된 상담에서 자동 학습된 (질문 → 답변) 지식</div>
     </div>
-    <div style="display:flex;gap:10px;align-items:center">
-      <a class="nav-link" href="/agent">상담원 콘솔</a>
-      <a class="nav-link" href="/faq">FAQ</a>
-      <span class="count" id="count">·</span>
-      <a class="nav-link" href="#" id="logout-btn">로그아웃</a>
-    </div>
+    <span class="count" id="count">·</span>
   </div>
 </header>
 
@@ -217,25 +214,7 @@ function formatDate(iso) {
   } catch (e) { return iso; }
 }
 
-async function ensureLoggedIn() {
-  try {
-    const res = await fetch("/api/auth/me");
-    if (!res.ok) throw new Error();
-    return await res.json();
-  } catch (e) {
-    location.href = "/login?next=" + encodeURIComponent(location.pathname);
-    throw e;
-  }
-}
-
-async function logout(e) {
-  if (e) e.preventDefault();
-  try { await fetch("/api/auth/logout", { method: "POST" }); } catch (err) {}
-  location.href = "/login";
-}
-
 async function init() {
-  await ensureLoggedIn();
   try {
     const res = await fetch("/api/knowledge/items");
     if (!res.ok) throw new Error();
@@ -327,9 +306,9 @@ $("search").addEventListener("input", (e) => {
   searchText = e.target.value;
   render();
 });
-$("logout-btn").addEventListener("click", logout);
 
-init();
+document.addEventListener("auth-ready", init);
 </script>
+<script src="/assets/nav.js"></script>
 </body>
 </html>

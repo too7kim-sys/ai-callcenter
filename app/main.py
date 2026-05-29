@@ -4,16 +4,19 @@ import os
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import accounts, ai, auth, config
 from .database import Base, engine
 from .routers import agent, chat, password
 from .routers import auth as auth_router
+from .routers import roles as roles_router
 from .routers import users as users_router
 
 logging.basicConfig(level=logging.INFO)
 
 Base.metadata.create_all(bind=engine)
+auth.seed_roles()      # 시스템 역할(admin, agent)
 accounts.seed_accounts()
 auth.seed_admin()
 
@@ -23,9 +26,17 @@ app.include_router(agent.router)
 app.include_router(password.router)
 app.include_router(auth_router.router)
 app.include_router(users_router.router)
+app.include_router(roles_router.router)
 
 STATIC_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static"
+)
+
+# 공유 자산(상단 메뉴 등)을 /assets/ 에서 서비스
+app.mount(
+    "/assets",
+    StaticFiles(directory=os.path.join(STATIC_DIR, "assets")),
+    name="assets",
 )
 
 
@@ -77,3 +88,9 @@ def login_page():
 def users_page():
     """콜센터 사용자 관리 화면 (관리자 전용)."""
     return FileResponse(os.path.join(STATIC_DIR, "users.html"))
+
+
+@app.get("/permissions")
+def permissions_page():
+    """역할·권한 관리 화면 (관리자 전용)."""
+    return FileResponse(os.path.join(STATIC_DIR, "permissions.html"))

@@ -128,3 +128,26 @@ class AgentSession(Base):
     created_at = Column(DateTime, default=_now)
     ip = Column(String, nullable=True)
     user_agent = Column(String, nullable=True)
+
+
+class Role(Base):
+    """콜센터 사용자 역할. AgentUser.role 이 이 테이블의 name 을 참조한다."""
+
+    __tablename__ = "roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    description = Column(String, nullable=True)
+    is_system = Column(Boolean, default=False)  # True 면 삭제 불가
+    created_at = Column(DateTime, default=_now)
+
+
+class RolePermission(Base):
+    """역할에 부여된 권한 키. admin 역할은 user_has() 가 항상 True 처리하므로 행을 두지 않는다."""
+
+    __tablename__ = "role_permissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    role_id = Column(Integer, ForeignKey("roles.id"), index=True)
+    permission_key = Column(String, index=True)
+    created_at = Column(DateTime, default=_now)

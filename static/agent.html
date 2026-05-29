@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>상담원 콘솔 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/nav.css" />
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -14,25 +15,27 @@
     display: flex;
     flex-direction: column;
   }
-  header {
-    background: #0f172a;
-    color: #fff;
-    padding: 12px 22px;
+  header.page-head {
+    background: #fff;
+    color: #0f172a;
+    padding: 10px 22px;
+    border-bottom: 1px solid #e2e8f0;
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
   }
-  header h1 { font-size: 16px; font-weight: 700; }
-  header .badge {
+  header.page-head h1 { font-size: 15px; font-weight: 700; color: #1d4ed8; }
+  header.page-head .badge {
     font-size: 11px;
-    padding: 3px 9px;
+    padding: 3px 10px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, .18);
+    background: #f1f5f9;
+    color: #475569;
     font-weight: 600;
   }
-  header a.badge { color: #fff; text-decoration: none; cursor: pointer; }
-  header a.badge:hover { background: rgba(255, 255, 255, .35); }
+  header.page-head a.badge { text-decoration: none; cursor: pointer; }
+  header.page-head a.badge:hover { background: #e2e8f0; }
   .layout { flex: 1; display: flex; overflow: hidden; }
 
   /* ----- 상담 목록 ----- */
@@ -279,14 +282,12 @@
 </style>
 </head>
 <body>
-<header>
-  <h1>상담원 콘솔 · AI 콜센터</h1>
+<header id="app-nav"></header>
+<header class="page-head">
+  <h1>상담원 콘솔</h1>
   <div style="display:flex;gap:8px;align-items:center">
-    <a class="badge" id="learn-badge" href="/knowledge" title="학습 데이터 관리로 이동">학습 0건</a>
+    <a class="badge" id="learn-badge" href="/knowledge" title="학습 데이터 관리">학습 0건</a>
     <span class="badge" id="mode-badge">·</span>
-    <a class="badge" id="users-link" href="/users" style="display:none">사용자 관리</a>
-    <span class="badge" id="me">·</span>
-    <a class="badge" id="logout-btn" href="#" title="로그아웃">로그아웃</a>
   </div>
 </header>
 
@@ -690,30 +691,8 @@ async function sendReset() {
   }
 }
 
-async function ensureLoggedIn() {
-  try {
-    const res = await fetch("/api/auth/me");
-    if (!res.ok) throw new Error("unauth");
-    const user = await res.json();
-    $("me").textContent = `${user.name} (${user.role === "admin" ? "관리자" : "상담원"})`;
-    if (user.role === "admin") $("users-link").style.display = "";
-    return user;
-  } catch (e) {
-    location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search);
-    throw e;
-  }
-}
-
-async function logout(e) {
-  if (e) e.preventDefault();
-  try { await fetch("/api/auth/logout", { method: "POST" }); } catch (err) {}
-  location.href = "/login";
-}
-
-$("logout-btn").addEventListener("click", logout);
-
+// 인증·로그아웃은 /assets/nav.js 가 담당. 여기서는 페이지 로직만 실행.
 async function bootstrap() {
-  await ensureLoggedIn();
   loadConfig();
   loadKnowledge();
   await loadList();
@@ -721,8 +700,9 @@ async function bootstrap() {
   const initConv = new URLSearchParams(location.search).get("conv");
   if (initConv) selectConversation(parseInt(initConv, 10));
 }
-bootstrap();
+document.addEventListener("auth-ready", bootstrap);
 listTimer = setInterval(loadList, 5000);
 </script>
+<script src="/assets/nav.js"></script>
 </body>
 </html>

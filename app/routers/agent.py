@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from .. import ai, auth, faq, knowledge
 from ..database import get_db
 from ..models import Conversation, KnowledgeItem, Message
+from ..permissions import P
 from ..schemas import ReplyRequest, StatusRequest
 from ..service import (
     build_history,
@@ -15,18 +16,16 @@ from ..service import (
     serialize_conversation,
 )
 
-# 상담원용 API는 모두 로그인 필요
-router = APIRouter(
-    prefix="/api",
-    tags=["agent"],
-    dependencies=[Depends(auth.require_agent)],
-)
+router = APIRouter(prefix="/api", tags=["agent"])
 
 _STATUSES = {"open", "escalated", "closed"}
 
 
 @router.get("/conversations")
-def list_conversations(db: Session = Depends(get_db)):
+def list_conversations(
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.CONV_VIEW)),
+):
     """전체 상담 목록 (최근 갱신 순)."""
     conversations = (
         db.query(Conversation).order_by(Conversation.updated_at.desc()).all()
@@ -35,7 +34,11 @@ def list_conversations(db: Session = Depends(get_db)):
 
 
 @router.post("/conversations/{conversation_id}/analyze")
-def analyze_conversation(conversation_id: int, db: Session = Depends(get_db)):
+def analyze_conversation(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.CONV_ANALYZE)),
+):
     """상담 요약·분류: 전체 대화를 요약하고 카테고리/태그를 부여한다."""
     conv = get_conversation_or_404(db, conversation_id)
     result = ai.summarize(build_history(conv))
@@ -55,7 +58,11 @@ def analyze_conversation(conversation_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/conversations/{conversation_id}/recommend")
-def recommend_answers(conversation_id: int, db: Session = Depends(get_db)):
+def recommend_answers(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.CONV_RECOMMEND)),
+):
     """상담원 답변 추천: FAQ + 학습된 과거 상담 사례 기반 추천 답변 목록."""
     conv = get_conversation_or_404(db, conversation_id)
     history = build_history(conv)
@@ -72,7 +79,12 @@ def recommend_answers(conversation_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/conversations/{conversation_id}/reply")
-def agent_reply(conversation_id: int, payload: ReplyRequest, db: Session = Depends(get_db)):
+def agent_reply(
+    conversation_id: int,
+    payload: ReplyRequest,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.CONV_REPLY)),
+):
     """상담원이 직접 답변을 전송한다."""
     conv = get_conversation_or_404(db, conversation_id)
     message = Message(conversation_id=conv.id, role="agent", content=payload.message.strip())
@@ -84,7 +96,12 @@ def agent_reply(conversation_id: int, payload: ReplyRequest, db: Session = Depen
 
 
 @router.post("/conversations/{conversation_id}/status")
-def update_status(conversation_id: int, payload: StatusRequest, db: Session = Depends(get_db)):
+def update_status(
+    conversation_id: int,
+    payload: StatusRequest,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.CONV_CLOSE)),
+):
     """상담 상태를 변경한다 (open / escalated / closed)."""
     if payload.status not in _STATUSES:
         raise HTTPException(status_code=400, detail="유효하지 않은 상태값입니다.")
@@ -100,13 +117,19 @@ def update_status(conversation_id: int, payload: StatusRequest, db: Session = De
 
 
 @router.get("/knowledge")
-def knowledge_stats(db: Session = Depends(get_db)):
+def knowledge_stats(
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.KNOWLEDGE_VIEW)),
+):
     """학습된 상담 지식 통계: 항목 수와 검색 방식(임베딩 가능 여부)."""
     return {"count": knowledge.count(db), "embeddings": ai.embeddings_available()}
 
 
 @router.get("/knowledge/items")
-def list_knowledge_items(db: Session = Depends(get_db)):
+def list_knowledge_items(
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.KNOWLEDGE_VIEW)),
+):
     """학습된 지식 전체 목록 (관리·검수용).
 
     FAQ에 노출되지 않는 짧은 답변 항목도 모두 포함하며, 출처 상담의
@@ -133,7 +156,11 @@ def list_knowledge_items(db: Session = Depends(get_db)):
 
 
 @router.delete("/knowledge/items/{item_id}")
-def delete_knowledge_item(item_id: int, db: Session = Depends(get_db)):
+def delete_knowledge_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.KNOWLEDGE_DELETE)),
+):
     """잘못 학습된 항목을 삭제한다 (검수용)."""
     item = db.get(KnowledgeItem, item_id)
     if item is None:
@@ -147,7 +174,10 @@ _MIN_LEARNED_ANSWER_LEN = 20  # 너무 짧은 상담원 답변은 FAQ로 노출�
 
 
 @router.get("/faq")
-def get_faq(db: Session = Depends(get_db)):
+def get_faq(
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.FAQ_VIEW)),
+):
     """FAQ 지식베이스 조회 — 정적 FAQ + 종료된 상담에서 학습된 항목을 함께 반환한다.
 
     각 항목에 `source`("curated"|"learned") 가 포함되며, 학습 항목은

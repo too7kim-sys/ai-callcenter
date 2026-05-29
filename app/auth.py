@@ -11,9 +11,9 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
-from . import security
+from . import permissions, security
 from .database import SessionLocal, get_db
-from .models import AgentSession, AgentUser
+from .models import AgentSession, AgentUser, Role, RolePermission
 
 logger = logging.getLogger("ai_callcenter.auth")
 
@@ -154,10 +154,24 @@ def require_agent(user: AgentUser = Depends(current_user)) -> AgentUser:
 
 
 def require_admin(user: AgentUser = Depends(current_user)) -> AgentUser:
-    """관리자 전용."""
+    """관리자 전용 (역할이 admin인 경우)."""
     if user.role != ROLE_ADMIN:
         raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
     return user
+
+
+def require_permission(perm_key: str):
+    """특정 권한이 필요한 엔드포인트용 FastAPI 의존성."""
+
+    def checker(
+        user: AgentUser = Depends(current_user),
+        db: Session = Depends(get_db),
+    ) -> AgentUser:
+        if not permissions.user_has(db, user, perm_key):
+            raise HTTPException(status_code=403, detail="이 작업을 수행할 권한이 없습니다.")
+        return user
+
+    return checker
 
 
 # ====================================================================
@@ -186,5 +200,32 @@ def seed_admin():
             "로그인 직후 비밀번호를 변경해 주세요.",
             password,
         )
+    finally:
+        db.close()
+
+
+def seed_roles():
+    """시스템 역할(admin, agent)을 1회 시드한다."""
+    db = SessionLocal()
+    try:
+        if db.query(Role).filter(Role.name == permissions.ROLE_ADMIN).first() is None:
+            db.add(Role(
+                name=permissions.ROLE_ADMIN,
+                description="모든 권한을 가진 관리자",
+                is_system=True,
+            ))
+        agent_role = db.query(Role).filter(Role.name == permissions.ROLE_AGENT).first()
+        if agent_role is None:
+            agent_role = Role(
+                name=permissions.ROLE_AGENT,
+                description="일반 상담원 (기본 권한)",
+                is_system=True,
+            )
+            db.add(agent_role)
+            db.commit()
+            db.refresh(agent_role)
+            for key in permissions.DEFAULT_AGENT_PERMISSIONS:
+                db.add(RolePermission(role_id=agent_role.id, permission_key=key))
+        db.commit()
     finally:
         db.close()

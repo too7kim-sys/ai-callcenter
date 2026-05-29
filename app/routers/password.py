@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import accounts, auth, config
 from ..database import get_db
+from ..permissions import P
 from ..schemas import PasswordQuery, PasswordResetConfirm
 
 logger = logging.getLogger("ai_callcenter.password")
@@ -21,9 +22,9 @@ router = APIRouter(prefix="/api/password", tags=["password"])
 def verify_account(
     payload: PasswordQuery,
     db: Session = Depends(get_db),
-    _user=Depends(auth.require_agent),
+    _user=Depends(auth.require_permission(P.PASSWORD_ASSIST)),
 ):
-    """대상 시스템 테이블에서 계정 정보를 확인한다 (상담원 전용)."""
+    """대상 시스템 테이블에서 계정 정보를 확인한다 (권한: password.assist)."""
     account = accounts.find_account(db, payload.query)
     if account is None:
         return {"found": False, "account": None}
@@ -35,9 +36,9 @@ def request_reset(
     payload: PasswordQuery,
     request: Request,
     db: Session = Depends(get_db),
-    _user=Depends(auth.require_agent),
+    _user=Depends(auth.require_permission(P.PASSWORD_ASSIST)),
 ):
-    """계정 확인 후 재설정 토큰을 생성하고 링크를 발송한다 (상담원 전용).
+    """계정 확인 후 재설정 토큰을 생성하고 링크를 발송한다 (권한: password.assist).
 
     SMTP가 설정돼 있으면 이메일로 발송하고, 없으면 서버 로그로 폴백한다
     (개발 편의를 위해 폴백 시에만 응답에 링크를 포함한다).

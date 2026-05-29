@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
-from .. import auth, security
+from .. import auth, permissions, security
 from ..database import get_db
 from ..schemas import LoginRequest, PasswordChangeRequest
 
@@ -48,12 +48,13 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 
 
 @router.get("/me")
-def me(user=Depends(auth.current_user)):
+def me(user=Depends(auth.current_user), db: Session = Depends(get_db)):
     return {
         "id": user.id,
         "username": user.username,
         "name": user.name,
         "role": user.role,
+        "permissions": permissions.permissions_of(db, user.role),
     }
 
 

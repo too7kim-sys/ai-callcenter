@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>사용자 관리 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/nav.css" />
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -132,27 +133,17 @@
 </style>
 </head>
 <body>
-<header>
-  <h1>사용자 관리 · AI 콜센터</h1>
-  <div class="nav">
-    <a href="/agent">상담원 콘솔</a>
-    <a href="/faq">FAQ</a>
-    <span class="me" id="me">·</span>
-    <a href="#" id="logout">로그아웃</a>
-  </div>
-</header>
+<header id="app-nav"></header>
 
 <div class="container">
+  <div style="padding:6px 0 16px"><h1 style="font-size:18px;font-weight:700;color:#0f172a">사용자 관리</h1></div>
   <div class="panel">
     <h2>신규 사용자 추가</h2>
     <div class="form-row">
       <input id="new-username" placeholder="아이디 (영문/숫자/._-)" />
       <input id="new-name" placeholder="이름" />
       <input id="new-email" placeholder="이메일 (선택)" />
-      <select id="new-role">
-        <option value="agent">상담원</option>
-        <option value="admin">관리자</option>
-      </select>
+      <select id="new-role"></select>
       <input id="new-password" type="password" placeholder="비밀번호 (8자 이상)" />
       <button class="primary" id="create-btn">추가</button>
     </div>
@@ -174,10 +165,12 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="/assets/nav.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let me = null;
 let users = [];
+let availableRoles = [];
 
 function escapeHtml(t) {
   const d = document.createElement("div");
@@ -206,32 +199,33 @@ function isLocked(u) {
   try { return new Date(u.locked_until) > new Date(); } catch (e) { return false; }
 }
 
-async function ensureAdmin() {
+async function loadUsersAndRoles() {
   try {
-    const res = await fetch("/api/auth/me");
-    if (!res.ok) throw new Error("unauth");
-    me = await res.json();
-    if (me.role !== "admin") {
-      location.href = "/agent";
-      return false;
+    const [uRes, rRes] = await Promise.all([
+      fetch("/api/users"),
+      fetch("/api/roles"),
+    ]);
+    if (!uRes.ok) throw new Error("users");
+    users = await uRes.json();
+    if (rRes.ok) {
+      availableRoles = await rRes.json();
+    } else {
+      // 권한이 없는 경우 기본 역할만
+      availableRoles = [{ name: "agent" }, { name: "admin" }];
     }
-    $("me").textContent = `${me.name} (${me.role})`;
-    return true;
-  } catch (e) {
-    location.href = "/login?next=" + encodeURIComponent(location.pathname);
-    return false;
-  }
-}
-
-async function loadUsers() {
-  try {
-    const res = await fetch("/api/users");
-    if (!res.ok) throw new Error();
-    users = await res.json();
+    renderRoleOptions();
     render();
   } catch (e) {
     toast("사용자 목록을 불러오지 못했습니다.");
   }
+}
+
+function renderRoleOptions() {
+  const labels = { admin: "관리자", agent: "상담원" };
+  const opts = availableRoles
+    .map((r) => `<option value="${r.name}">${labels[r.name] || r.name}</option>`)
+    .join("");
+  $("new-role").innerHTML = opts;
 }
 
 function render() {
@@ -242,15 +236,23 @@ function render() {
       : locked
       ? '<span class="status-chip locked">잠김</span>'
       : '<span class="status-chip active">활성</span>';
-    const roleChip = `<span class="role-chip ${u.role}">${u.role === "admin" ? "관리자" : "상담원"}</span>`;
+    const roleLabels = { admin: "관리자", agent: "상담원" };
+    const roleClass = u.role === "admin" ? "admin" : "agent";
+    const roleChip = `<span class="role-chip ${roleClass}">${escapeHtml(roleLabels[u.role] || u.role)}</span>`;
     const isMe = me && u.id === me.id;
+    // 역할 변경 드롭다운 inline (커스텀 역할 지원)
+    const roleSelect = availableRoles.length > 1
+      ? '<select class="role-select" data-id="' + u.id + '" style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid #cbd5e1">'
+        + availableRoles.map((r) => `<option value="${escapeHtml(r.name)}" ${r.name === u.role ? "selected" : ""}>${escapeHtml(roleLabels[r.name] || r.name)}</option>`).join("")
+        + '</select>'
+      : '';
     const actions = [
       `<button data-act="reset" data-id="${u.id}">비밀번호 초기화</button>`,
-      `<button data-act="role" data-id="${u.id}">${u.role === "admin" ? "상담원으로" : "관리자로"}</button>`,
+      roleSelect,
       `<button data-act="active" data-id="${u.id}">${u.active ? "비활성화" : "활성화"}</button>`,
       locked ? `<button data-act="unlock" data-id="${u.id}">잠금 해제</button>` : "",
       `<button class="danger" data-act="delete" data-id="${u.id}">삭제</button>`,
-    ].filter(Boolean).join("");
+    ].filter(Boolean).join(" ");
     return `
       <tr>
         <td>${u.id}</td>
@@ -267,6 +269,25 @@ function render() {
   document.querySelectorAll("[data-act]").forEach((b) => {
     b.addEventListener("click", () => doAction(b.dataset.act, parseInt(b.dataset.id, 10)));
   });
+  document.querySelectorAll(".role-select").forEach((sel) => {
+    sel.addEventListener("change", () => changeRole(parseInt(sel.dataset.id, 10), sel.value));
+  });
+}
+
+async function changeRole(id, newRole) {
+  try {
+    const res = await fetch(`/api/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: newRole }),
+    });
+    if (!res.ok) throw await res.json();
+    toast("역할을 변경했습니다.");
+    await loadUsersAndRoles();
+  } catch (e) {
+    toast(e?.detail || "역할 변경에 실패했습니다.");
+    await loadUsersAndRoles();
+  }
 }
 
 async function doAction(act, id) {
@@ -289,15 +310,6 @@ async function doAction(act, id) {
       });
       if (!res.ok) throw await res.json();
       toast("비밀번호를 초기화했습니다.");
-    } else if (act === "role") {
-      const newRole = user.role === "admin" ? "agent" : "admin";
-      const res = await fetch(`/api/users/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: newRole }),
-      });
-      if (!res.ok) throw await res.json();
-      toast("역할을 변경했습니다.");
     } else if (act === "active") {
       const res = await fetch(`/api/users/${id}`, {
         method: "PATCH",
@@ -315,7 +327,7 @@ async function doAction(act, id) {
       if (!res.ok) throw await res.json();
       toast("잠금을 해제했습니다.");
     }
-    await loadUsers();
+    await loadUsersAndRoles();
   } catch (e) {
     toast(e?.detail || "처리 중 오류가 발생했습니다.");
   }
@@ -346,9 +358,9 @@ async function createUser() {
     });
     if (!res.ok) throw await res.json();
     ["new-username", "new-name", "new-email", "new-password"].forEach((id) => $(id).value = "");
-    $("new-role").value = "agent";
+    if (availableRoles.length) $("new-role").value = "agent";
     toast("사용자를 추가했습니다.");
-    await loadUsers();
+    await loadUsersAndRoles();
   } catch (e) {
     toast(e?.detail || "생성에 실패했습니다.");
   } finally {
@@ -356,18 +368,16 @@ async function createUser() {
   }
 }
 
-async function logout(e) {
-  e.preventDefault();
-  await fetch("/api/auth/logout", { method: "POST" });
-  location.href = "/login";
-}
-
 $("create-btn").addEventListener("click", createUser);
-$("logout").addEventListener("click", logout);
 
-(async () => {
-  if (await ensureAdmin()) loadUsers();
-})();
+document.addEventListener("auth-ready", (e) => {
+  me = e.detail;
+  if (me && me.role !== "admin" && !(me.permissions || []).includes("user.manage")) {
+    location.href = "/agent";
+    return;
+  }
+  loadUsersAndRoles();
+});
 </script>
 </body>
 </html>

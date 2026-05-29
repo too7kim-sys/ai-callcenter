@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>FAQ 지식베이스 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/nav.css" />
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -156,18 +157,14 @@
 </style>
 </head>
 <body>
+<header id="app-nav"></header>
 <header>
   <div class="row">
     <div>
       <h1>FAQ 지식베이스</h1>
       <div class="sub">AI 콜센터 · 상담원 참고용</div>
     </div>
-    <div style="display:flex;gap:10px;align-items:center">
-      <a href="/agent" style="color:#fff;text-decoration:none;font-size:12px;opacity:.9">상담원 콘솔</a>
-      <a href="/knowledge" style="color:#fff;text-decoration:none;font-size:12px;opacity:.9">학습 데이터</a>
-      <span class="count" id="count">·</span>
-      <a href="#" id="logout-btn" style="color:#fff;text-decoration:none;font-size:12px;opacity:.9">로그아웃</a>
-    </div>
+    <span class="count" id="count">·</span>
   </div>
 </header>
 
@@ -200,25 +197,7 @@ function highlight(text, query) {
   return safe.replace(new RegExp(escaped, "gi"), "<mark>$&</mark>");
 }
 
-async function ensureLoggedIn() {
-  try {
-    const res = await fetch("/api/auth/me");
-    if (!res.ok) throw new Error();
-    return await res.json();
-  } catch (e) {
-    location.href = "/login?next=" + encodeURIComponent(location.pathname);
-    throw e;
-  }
-}
-
-async function logout(e) {
-  if (e) e.preventDefault();
-  try { await fetch("/api/auth/logout", { method: "POST" }); } catch (err) {}
-  location.href = "/login";
-}
-
 async function init() {
-  await ensureLoggedIn();
   try {
     const res = await fetch("/api/faq");
     if (!res.ok) throw new Error();
@@ -307,9 +286,9 @@ $("search").addEventListener("input", (e) => {
   searchText = e.target.value;
   render();
 });
-$("logout-btn").addEventListener("click", logout);
 
-init();
+document.addEventListener("auth-ready", init);
 </script>
+<script src="/assets/nav.js"></script>
 </body>
 </html>

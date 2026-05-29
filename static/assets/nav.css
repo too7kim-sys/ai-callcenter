@@ -1,0 +1,75 @@
+/* 콜센터 공통 상단 메뉴 */
+.app-nav {
+  background: #0f172a;
+  color: #fff;
+  padding: 10px 22px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-size: 13px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  font-family: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.app-nav .brand {
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: .3px;
+  color: #fff;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.app-nav .items {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+.app-nav .item {
+  color: rgba(255, 255, 255, .72);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-weight: 600;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+.app-nav .item:hover { background: rgba(255, 255, 255, .10); color: #fff; }
+.app-nav .item.active { background: #1d4ed8; color: #fff; }
+.app-nav .user {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.app-nav .me {
+  background: rgba(255, 255, 255, .15);
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.app-nav .me .role {
+  opacity: .85;
+  font-size: 11px;
+  margin-left: 6px;
+}
+.app-nav .logout {
+  color: #fff;
+  opacity: .8;
+  text-decoration: none;
+  font-size: 12px;
+}
+.app-nav .logout:hover { opacity: 1; text-decoration: underline; }
+
+@media (max-width: 720px) {
+  .app-nav {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 16px;
+  }
+  .app-nav .items { width: 100%; overflow-x: auto; }
+  .app-nav .user { width: 100%; justify-content: space-between; }
+}
