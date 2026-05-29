@@ -247,6 +247,7 @@ function render() {
         + '</select>'
       : '';
     const actions = [
+      `<button data-act="edit" data-id="${u.id}">정보 수정</button>`,
       `<button data-act="reset" data-id="${u.id}">비밀번호 초기화</button>`,
       roleSelect,
       `<button data-act="active" data-id="${u.id}">${u.active ? "비활성화" : "활성화"}</button>`,
@@ -299,6 +300,20 @@ async function doAction(act, id) {
       const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
       if (!res.ok) throw await res.json();
       toast("삭제했습니다.");
+    } else if (act === "edit") {
+      const newName = prompt("이름:", user.name || "");
+      if (newName === null) return;
+      const newEmail = prompt("이메일 (비우면 삭제):", user.email || "");
+      if (newEmail === null) return;
+      const trimmedName = newName.trim();
+      if (!trimmedName) { toast("이름은 비울 수 없습니다."); return; }
+      const res = await fetch(`/api/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmedName, email: newEmail.trim() }),
+      });
+      if (!res.ok) throw await res.json();
+      toast("정보를 수정했습니다.");
     } else if (act === "reset") {
       const pw = prompt("새 비밀번호 (8자 이상):");
       if (!pw) return;

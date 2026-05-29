@@ -100,18 +100,56 @@
   .flag.ok { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
   .flag.no { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
   .flag.emb { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
-  .del-btn {
+  .head-btn {
     flex-shrink: 0;
     font-size: 11px;
     padding: 4px 10px;
     border-radius: 6px;
-    border: 1px solid #fecaca;
+    cursor: pointer;
+    font-weight: 600;
     background: #fff;
-    color: #b91c1c;
+  }
+  .edit-btn { border: 1px solid #cbd5e1; color: #1d4ed8; }
+  .edit-btn:hover { background: #eff6ff; }
+  .del-btn { border: 1px solid #fecaca; color: #b91c1c; }
+  .del-btn:hover { background: #fef2f2; }
+  .edit-form {
+    margin-top: 10px;
+    padding: 12px;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+  }
+  .edit-form label {
+    display: block;
+    font-size: 11px;
+    color: #64748b;
+    font-weight: 700;
+    margin-bottom: 4px;
+    margin-top: 8px;
+  }
+  .edit-form label:first-child { margin-top: 0; }
+  .edit-form textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+  }
+  .edit-form textarea:focus { border-color: #1d4ed8; }
+  .edit-form .actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 10px; }
+  .edit-form .actions button {
+    font-size: 12px;
+    padding: 6px 14px;
+    border-radius: 6px;
     cursor: pointer;
     font-weight: 600;
   }
-  .del-btn:hover { background: #fef2f2; }
+  .edit-form .save { background: #1d4ed8; color: #fff; border: 1px solid #1d4ed8; }
+  .edit-form .cancel { background: #fff; color: #475569; border: 1px solid #cbd5e1; }
   .src {
     font-size: 12px;
     color: #475569;
@@ -275,13 +313,15 @@ function render() {
       `<span class="date">학습 ${escapeHtml(formatDate(it.created_at))}</span>` +
       faqFlag + embFlag +
       `</div>` +
-      `<button class="del-btn" data-id="${it.id}">삭제</button>` +
+      `<button class="head-btn edit-btn" data-edit="${it.id}">수정</button>` +
+      `<button class="head-btn del-btn" data-id="${it.id}">삭제</button>` +
       `</div>` +
       `<div class="src">출처: ${escapeHtml(it.customer_name || "(이름 없음)")} · ` +
       `<a href="/agent?conv=${it.conversation_id}">상담 #${it.conversation_id}</a> ` +
       `(${escapeHtml(it.conversation_status || "-")})</div>` +
-      `<div class="q">${highlight(it.question || "", q)}</div>` +
-      `<div class="a">${highlight(it.answer || "", q)}</div>` +
+      `<div class="q" id="q-${it.id}">${highlight(it.question || "", q)}</div>` +
+      `<div class="a" id="a-${it.id}">${highlight(it.answer || "", q)}</div>` +
+      `<div id="edit-${it.id}"></div>` +
       `</div>`
     );
   }).join("");
@@ -289,6 +329,53 @@ function render() {
   document.querySelectorAll(".del-btn").forEach((b) => {
     b.addEventListener("click", () => deleteItem(parseInt(b.dataset.id, 10)));
   });
+  document.querySelectorAll(".edit-btn").forEach((b) => {
+    b.addEventListener("click", () => openEdit(parseInt(b.dataset.edit, 10)));
+  });
+}
+
+function openEdit(id) {
+  const item = allItems.find((it) => it.id === id);
+  if (!item) return;
+  const slot = $("edit-" + id);
+  // 토글: 이미 열려있으면 닫기
+  if (slot.innerHTML.trim()) { slot.innerHTML = ""; return; }
+  slot.innerHTML =
+    `<div class="edit-form">` +
+    `<label>질문</label>` +
+    `<textarea id="eq-${id}" rows="2">${escapeHtml(item.question || "")}</textarea>` +
+    `<label>답변</label>` +
+    `<textarea id="ea-${id}" rows="4">${escapeHtml(item.answer || "")}</textarea>` +
+    `<div class="actions">` +
+    `<button class="cancel" data-cancel="${id}">취소</button>` +
+    `<button class="save" data-save="${id}">저장</button>` +
+    `</div></div>`;
+  slot.querySelector("[data-cancel]").addEventListener("click", () => { slot.innerHTML = ""; });
+  slot.querySelector("[data-save]").addEventListener("click", () => saveEdit(id));
+  $("eq-" + id).focus();
+}
+
+async function saveEdit(id) {
+  const newQ = $("eq-" + id).value.trim();
+  const newA = $("ea-" + id).value.trim();
+  if (!newQ) { alert("질문을 비울 수 없습니다."); return; }
+  if (!newA) { alert("답변을 비울 수 없습니다."); return; }
+  try {
+    const res = await fetch(`/api/knowledge/items/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: newQ, answer: newA }),
+    });
+    if (!res.ok) {
+      let msg = "수정에 실패했습니다.";
+      try { msg = (await res.json()).detail || msg; } catch (e) {}
+      alert(msg);
+      return;
+    }
+    await init();
+  } catch (e) {
+    alert("수정 중 오류가 발생했습니다.");
+  }
 }
 
 async function deleteItem(id) {

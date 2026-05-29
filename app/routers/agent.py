@@ -8,7 +8,7 @@ from .. import ai, auth, faq, knowledge
 from ..database import get_db
 from ..models import Conversation, KnowledgeItem, Message
 from ..permissions import P
-from ..schemas import ReplyRequest, StatusRequest
+from ..schemas import KnowledgeItemUpdate, ReplyRequest, StatusRequest
 from ..service import (
     build_history,
     get_conversation_or_404,
@@ -153,6 +153,45 @@ def list_knowledge_items(
             "created_at": row.created_at.isoformat() if row.created_at else None,
         })
     return result
+
+
+@router.patch("/knowledge/items/{item_id}")
+def update_knowledge_item(
+    item_id: int,
+    payload: KnowledgeItemUpdate,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.KNOWLEDGE_DELETE)),
+):
+    """잘못 학습된 항목의 질문·답변을 수정한다 (검수용).
+
+    질문이 바뀌면 임베딩을 자동으로 재계산해 의미 검색 결과가 갱신되도록 한다.
+    """
+    import json as _json
+
+    item = db.get(KnowledgeItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="학습 항목을 찾을 수 없습니다.")
+
+    question_changed = False
+    if payload.question is not None:
+        new_q = payload.question.strip()
+        if not new_q:
+            raise HTTPException(status_code=400, detail="질문을 비울 수 없습니다.")
+        if new_q != item.question:
+            item.question = new_q
+            question_changed = True
+    if payload.answer is not None:
+        new_a = payload.answer.strip()
+        if not new_a:
+            raise HTTPException(status_code=400, detail="답변을 비울 수 없습니다.")
+        item.answer = new_a
+
+    if question_changed:
+        new_emb = ai.embed_text(item.question)
+        item.embedding = _json.dumps(new_emb) if new_emb else None
+
+    db.commit()
+    return {"ok": True, "id": item.id}
 
 
 @router.delete("/knowledge/items/{item_id}")

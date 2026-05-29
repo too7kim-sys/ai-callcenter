@@ -118,7 +118,7 @@ def delete_user(
     acting_user=Depends(auth.require_permission(permissions.P.USER_MANAGE)),
     db: Session = Depends(get_db),
 ):
-    if user_id == admin.id:
+    if user_id == acting_user.id:
         raise HTTPException(status_code=400, detail="본인 계정은 삭제할 수 없습니다.")
     user = db.get(AgentUser, user_id)
     if user is None:

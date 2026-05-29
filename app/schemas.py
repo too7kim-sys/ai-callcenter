@@ -18,6 +18,11 @@ class StatusRequest(BaseModel):
     status: str  # open / escalated / closed
 
 
+class KnowledgeItemUpdate(BaseModel):
+    question: str | None = Field(default=None, min_length=1, max_length=2000)
+    answer: str | None = Field(default=None, min_length=1, max_length=4000)
+
+
 class PasswordQuery(BaseModel):
     query: str = Field(min_length=1, max_length=200)  # 이메일 또는 아이디
 
