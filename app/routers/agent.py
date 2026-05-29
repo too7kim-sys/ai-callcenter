@@ -8,7 +8,7 @@ from .. import ai, auth, faq, knowledge
 from ..database import get_db
 from ..models import Conversation, KnowledgeItem, Message
 from ..permissions import P
-from ..schemas import KnowledgeItemUpdate, ReplyRequest, StatusRequest
+from ..schemas import FaqCreate, FaqUpdate, KnowledgeItemUpdate, ReplyRequest, StatusRequest
 from ..service import (
     build_history,
     get_conversation_or_404,
@@ -210,6 +210,56 @@ def delete_knowledge_item(
 
 
 _MIN_LEARNED_ANSWER_LEN = 20  # 너무 짧은 상담원 답변은 FAQ로 노출하지 않음
+
+
+@router.post("/faq")
+def create_faq(
+    payload: FaqCreate,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.FAQ_MANAGE)),
+):
+    """FAQ 항목 추가 (관리자)."""
+    item = faq.create_entry(
+        db,
+        category=payload.category,
+        question=payload.question,
+        answer=payload.answer,
+        keywords=payload.keywords,
+    )
+    return {**item, "source": "curated"}
+
+
+@router.patch("/faq/{entry_id}")
+def update_faq(
+    entry_id: int,
+    payload: FaqUpdate,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.FAQ_MANAGE)),
+):
+    """FAQ 항목 수정 (관리자)."""
+    item = faq.update_entry(
+        db,
+        entry_id,
+        category=payload.category,
+        question=payload.question,
+        answer=payload.answer,
+        keywords=payload.keywords,
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="FAQ 항목을 찾을 수 없습니다.")
+    return {**item, "source": "curated"}
+
+
+@router.delete("/faq/{entry_id}")
+def delete_faq(
+    entry_id: int,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.FAQ_MANAGE)),
+):
+    """FAQ 항목 삭제 (관리자)."""
+    if not faq.delete_entry(db, entry_id):
+        raise HTTPException(status_code=404, detail="FAQ 항목을 찾을 수 없습니다.")
+    return {"ok": True}
 
 
 @router.get("/faq")

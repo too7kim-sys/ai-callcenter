@@ -1,6 +1,16 @@
-"""FAQ 지식베이스. 답변 추천과 AI 챗봇의 근거 자료로 사용된다."""
+"""FAQ 지식베이스.
 
-FAQS = [
+기동 시 _SEED_FAQS 의 정적 데이터가 DB(faq_entries 테이블)에 1회 시드되며,
+이후 관리자가 /api/faq CRUD 로 자유롭게 추가·수정·삭제할 수 있다. 런타임에는
+이 모듈의 FAQS 전역 변수가 DB의 최신 상태를 캐시한다 (변경 시 refresh).
+"""
+import json
+import logging
+
+logger = logging.getLogger("ai_callcenter.faq")
+
+
+_SEED_FAQS = [
     {
         "id": 1,
         "category": "배송",
@@ -738,6 +748,9 @@ FAQS = [
     },
 ]
 
+# 런타임 캐시. init_db() 와 refresh() 가 DB에서 채운다.
+FAQS = list(_SEED_FAQS)
+
 CATEGORIES = [
     "배송", "환불/교환", "결제", "회원/계정", "제품",                          # 이커머스
     "계정/접속", "네트워크", "이메일", "소프트웨어", "권한/보안",                # IT 헬프데스크 (일반)
@@ -766,3 +779,108 @@ def as_prompt_text():
     for item in FAQS:
         lines.append(f"- [{item['category']}] Q: {item['question']}\n  A: {item['answer']}")
     return "\n".join(lines)
+
+
+# ====================================================================
+# DB 연동 (관리자 CRUD)
+# ====================================================================
+
+def _row_to_dict(row) -> dict:
+    try:
+        keywords = json.loads(row.keywords) if row.keywords else []
+    except (TypeError, ValueError):
+        keywords = []
+    return {
+        "id": row.id,
+        "category": row.category,
+        "question": row.question,
+        "answer": row.answer,
+        "keywords": keywords,
+    }
+
+
+def init_db():
+    """기동 시 호출. faq_entries 가 비어 있으면 시드 데이터로 채우고,
+    어떤 경우든 FAQS 캐시를 최신 DB 내용으로 갱신한다."""
+    from .database import SessionLocal
+    from .models import FaqEntry
+
+    db = SessionLocal()
+    try:
+        if db.query(FaqEntry).count() == 0:
+            for item in _SEED_FAQS:
+                db.add(FaqEntry(
+                    category=item["category"],
+                    question=item["question"],
+                    answer=item["answer"],
+                    keywords=json.dumps(item.get("keywords", []), ensure_ascii=False),
+                ))
+            db.commit()
+            logger.info("FAQ 시드 %d건을 DB에 적재했습니다.", len(_SEED_FAQS))
+        refresh(db)
+    finally:
+        db.close()
+
+
+def refresh(db):
+    """DB에서 FAQ 전체를 다시 읽어 FAQS 캐시를 갱신한다."""
+    from .models import FaqEntry
+    global FAQS
+    rows = db.query(FaqEntry).order_by(FaqEntry.id).all()
+    FAQS = [_row_to_dict(r) for r in rows]
+
+
+def create_entry(db, *, category, question, answer, keywords):
+    """관리자 FAQ 추가."""
+    from .models import FaqEntry
+    row = FaqEntry(
+        category=(category or "기타").strip(),
+        question=question.strip(),
+        answer=answer.strip(),
+        keywords=json.dumps(_clean_keywords(keywords), ensure_ascii=False),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    refresh(db)
+    return _row_to_dict(row)
+
+
+def update_entry(db, entry_id, *, category=None, question=None, answer=None, keywords=None):
+    """관리자 FAQ 수정. None 인 필드는 변경하지 않는다."""
+    from .models import FaqEntry
+    row = db.get(FaqEntry, entry_id)
+    if row is None:
+        return None
+    if category is not None and category.strip():
+        row.category = category.strip()
+    if question is not None and question.strip():
+        row.question = question.strip()
+    if answer is not None and answer.strip():
+        row.answer = answer.strip()
+    if keywords is not None:
+        row.keywords = json.dumps(_clean_keywords(keywords), ensure_ascii=False)
+    db.commit()
+    db.refresh(row)
+    refresh(db)
+    return _row_to_dict(row)
+
+
+def delete_entry(db, entry_id) -> bool:
+    """관리자 FAQ 삭제."""
+    from .models import FaqEntry
+    row = db.get(FaqEntry, entry_id)
+    if row is None:
+        return False
+    db.delete(row)
+    db.commit()
+    refresh(db)
+    return True
+
+
+def _clean_keywords(items) -> list:
+    if not items:
+        return []
+    if isinstance(items, str):
+        items = [s for s in items.split(",")]
+    return [str(s).strip() for s in items if str(s).strip()][:20]

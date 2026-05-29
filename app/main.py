@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import accounts, ai, auth, config
+from . import accounts, ai, auth, config, faq
 from .database import Base, engine
 from .routers import agent, chat, password
 from .routers import auth as auth_router
@@ -19,6 +19,7 @@ Base.metadata.create_all(bind=engine)
 auth.seed_roles()      # 시스템 역할(admin, agent)
 accounts.seed_accounts()
 auth.seed_admin()
+faq.init_db()          # FAQ 시드 + 캐시 로딩
 
 app = FastAPI(title="AI 콜센터", version="1.0.0")
 app.include_router(chat.router)

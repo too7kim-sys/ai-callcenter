@@ -18,6 +18,7 @@ class P:
     KNOWLEDGE_VIEW = "knowledge.view"
     KNOWLEDGE_DELETE = "knowledge.delete"
     FAQ_VIEW = "faq.view"
+    FAQ_MANAGE = "faq.manage"
     PASSWORD_ASSIST = "password.assist"
     USER_MANAGE = "user.manage"
     PERMISSION_MANAGE = "permission.manage"
@@ -33,6 +34,7 @@ CATALOG: List[Tuple[str, str, str]] = [
     (P.KNOWLEDGE_VIEW,   "학습 데이터 조회",           "학습"),
     (P.KNOWLEDGE_DELETE, "학습 데이터 삭제",           "학습"),
     (P.FAQ_VIEW,         "FAQ 조회",                   "FAQ"),
+    (P.FAQ_MANAGE,       "FAQ 추가·수정·삭제",         "FAQ"),
     (P.PASSWORD_ASSIST,  "고객 비밀번호 재설정 지원",  "고객 지원"),
     (P.USER_MANAGE,      "콜센터 사용자 관리",         "관리"),
     (P.PERMISSION_MANAGE, "권한·역할 관리",            "관리"),

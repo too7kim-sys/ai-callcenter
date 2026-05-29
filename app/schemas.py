@@ -23,6 +23,20 @@ class KnowledgeItemUpdate(BaseModel):
     answer: str | None = Field(default=None, min_length=1, max_length=4000)
 
 
+class FaqCreate(BaseModel):
+    category: str = Field(min_length=1, max_length=64)
+    question: str = Field(min_length=1, max_length=500)
+    answer: str = Field(min_length=1, max_length=4000)
+    keywords: list[str] = Field(default_factory=list)
+
+
+class FaqUpdate(BaseModel):
+    category: str | None = Field(default=None, min_length=1, max_length=64)
+    question: str | None = Field(default=None, min_length=1, max_length=500)
+    answer: str | None = Field(default=None, min_length=1, max_length=4000)
+    keywords: list[str] | None = None
+
+
 class PasswordQuery(BaseModel):
     query: str = Field(min_length=1, max_length=200)  # 이메일 또는 아이디
 

@@ -101,6 +101,7 @@
   </div>
   <div class="meta">
     <span class="chip chip-brand" id="count">·</span>
+    <button class="btn btn-primary btn-sm hidden" id="add-btn">+ FAQ 추가</button>
   </div>
 </header>
 
@@ -192,22 +193,137 @@ function render() {
     const learnedBadge = f.source === "learned"
       ? `<span class="chip chip-success">학습됨 · 상담 #${UI.escapeHtml(String(f.conversation_id || ""))}</span>`
       : "";
+    // 큐레이션 항목 + faq.manage 권한이 있으면 수정/삭제 버튼 노출
+    const canManage = canManageFaq && f.source === "curated";
+    const actions = canManage
+      ? `<div style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn btn-secondary btn-xs" data-edit="${f.id}">수정</button>
+          <button class="btn btn-danger btn-xs" data-del="${f.id}">삭제</button>
+        </div>`
+      : "";
     return `
       <div class="faq-item">
         <div class="head">
           <span class="chip chip-brand">${UI.escapeHtml(f.category)}</span>
           ${learnedBadge}
           <span class="id">#${UI.escapeHtml(String(f.id))}</span>
+          ${actions}
         </div>
         <div class="q">${highlight(f.question, q)}</div>
         <div class="a">${highlight(f.answer, q)}</div>
         ${kws ? `<div class="kws">${kws}</div>` : ""}
       </div>`;
   }).join("");
+
+  document.querySelectorAll("[data-edit]").forEach((b) => {
+    b.addEventListener("click", () => editFaq(parseInt(b.dataset.edit, 10)));
+  });
+  document.querySelectorAll("[data-del]").forEach((b) => {
+    b.addEventListener("click", () => deleteFaq(parseInt(b.dataset.del, 10)));
+  });
+}
+
+let canManageFaq = false;
+
+function existingCategories() {
+  return [...new Set(allFaqs.map((f) => f.category))].filter(Boolean).sort();
+}
+
+async function addFaq() {
+  const data = await UI.form({
+    title: "FAQ 추가",
+    description: "새 FAQ 항목을 등록합니다. 추가 즉시 검색·AI 응답에 반영됩니다.",
+    fields: [
+      { name: "category", label: "카테고리", value: "", required: true,
+        placeholder: existingCategories().slice(0, 3).join(", ") + " 등" },
+      { name: "question", label: "질문", type: "textarea", required: true, rows: 2 },
+      { name: "answer",   label: "답변",   type: "textarea", required: true, rows: 4 },
+      { name: "keywords", label: "키워드 (쉼표로 구분)", placeholder: "예: 배송, 도착, 며칠" },
+    ],
+    okText: "추가",
+    wide: true,
+  });
+  if (!data) return;
+  try {
+    const res = await fetch("/api/faq", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: data.category.trim(),
+        question: data.question.trim(),
+        answer: data.answer.trim(),
+        keywords: data.keywords.split(",").map((s) => s.trim()).filter(Boolean),
+      }),
+    });
+    if (!res.ok) throw await res.json();
+    UI.toast("FAQ를 추가했습니다.", { type: "success" });
+    await init();
+  } catch (e) {
+    UI.toast(e?.detail || "추가에 실패했습니다.", { type: "danger" });
+  }
+}
+
+async function editFaq(id) {
+  const f = allFaqs.find((x) => String(x.id) === String(id));
+  if (!f) return;
+  const data = await UI.form({
+    title: "FAQ 수정",
+    description: `#${f.id} 항목을 수정합니다.`,
+    fields: [
+      { name: "category", label: "카테고리", value: f.category || "", required: true },
+      { name: "question", label: "질문", type: "textarea", value: f.question || "", required: true, rows: 2 },
+      { name: "answer",   label: "답변",   type: "textarea", value: f.answer || "",   required: true, rows: 4 },
+      { name: "keywords", label: "키워드 (쉼표로 구분)", value: (f.keywords || []).join(", ") },
+    ],
+    okText: "저장",
+    wide: true,
+  });
+  if (!data) return;
+  try {
+    const res = await fetch(`/api/faq/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: data.category.trim(),
+        question: data.question.trim(),
+        answer: data.answer.trim(),
+        keywords: data.keywords.split(",").map((s) => s.trim()).filter(Boolean),
+      }),
+    });
+    if (!res.ok) throw await res.json();
+    UI.toast("수정했습니다.", { type: "success" });
+    await init();
+  } catch (e) {
+    UI.toast(e?.detail || "수정에 실패했습니다.", { type: "danger" });
+  }
+}
+
+async function deleteFaq(id) {
+  const f = allFaqs.find((x) => String(x.id) === String(id));
+  const ok = await UI.confirm(
+    `FAQ #${id} 을(를) 삭제합니다.\n${f ? '"' + f.question + '"' : ""}\n이 작업은 되돌릴 수 없습니다.`,
+    { title: "FAQ 삭제", okText: "삭제", danger: true }
+  );
+  if (!ok) return;
+  try {
+    const res = await fetch(`/api/faq/${id}`, { method: "DELETE" });
+    if (!res.ok) throw await res.json();
+    UI.toast("삭제했습니다.", { type: "success" });
+    await init();
+  } catch (e) {
+    UI.toast(e?.detail || "삭제에 실패했습니다.", { type: "danger" });
+  }
 }
 
 $("search").addEventListener("input", (e) => { searchText = e.target.value; render(); });
-document.addEventListener("auth-ready", init);
+$("add-btn").addEventListener("click", addFaq);
+
+document.addEventListener("auth-ready", (e) => {
+  const user = e.detail;
+  canManageFaq = user && (user.role === "admin" || (user.permissions || []).includes("faq.manage"));
+  if (canManageFaq) $("add-btn").classList.remove("hidden");
+  init();
+});
 </script>
 </body>
 </html>

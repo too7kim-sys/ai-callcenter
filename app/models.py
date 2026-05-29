@@ -151,3 +151,22 @@ class RolePermission(Base):
     role_id = Column(Integer, ForeignKey("roles.id"), index=True)
     permission_key = Column(String, index=True)
     created_at = Column(DateTime, default=_now)
+
+
+class FaqEntry(Base):
+    """관리자가 큐레이션하는 FAQ 항목.
+
+    초기 기동 시 코드의 시드 데이터로 1회 채워지고, 이후엔 DB가 권한적
+    소스가 된다. 학습 항목은 별도 KnowledgeItem 테이블에 저장되어 GET
+    /api/faq 응답에서 합산된다.
+    """
+
+    __tablename__ = "faq_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    category = Column(String, index=True)
+    question = Column(Text)
+    answer = Column(Text)
+    keywords = Column(Text, nullable=True)  # JSON 배열 문자열
+    created_at = Column(DateTime, default=_now)
+    updated_at = Column(DateTime, default=_now, onupdate=_now)
