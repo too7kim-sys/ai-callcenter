@@ -7,373 +7,421 @@
 <link rel="stylesheet" href="/assets/ui.css" />
 <link rel="stylesheet" href="/assets/nav.css" />
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #f1f5f9;
-    color: #0f172a;
-    height: 100vh;
+  body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  .work-area { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+
+  /* ---------- 사이드바 (상담 목록) ---------- */
+  .sidebar {
+    width: 340px;
+    background: var(--c-surface);
+    border-right: 1px solid var(--c-border);
     display: flex;
     flex-direction: column;
-  }
-  header.page-head {
-    background: #fff;
-    color: #0f172a;
-    padding: 10px 22px;
-    border-bottom: 1px solid #e2e8f0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     flex-shrink: 0;
   }
-  header.page-head h1 { font-size: 15px; font-weight: 700; color: #1d4ed8; }
-  header.page-head .badge {
-    font-size: 11px;
-    padding: 3px 10px;
-    border-radius: 999px;
-    background: #f1f5f9;
-    color: #475569;
-    font-weight: 600;
-  }
-  header.page-head a.badge { text-decoration: none; cursor: pointer; }
-  header.page-head a.badge:hover { background: #e2e8f0; }
-  .layout { flex: 1; display: flex; overflow: hidden; }
-
-  /* ----- 상담 목록 ----- */
-  .list {
-    width: 320px;
-    background: #fff;
-    border-right: 1px solid #e2e8f0;
-    overflow-y: auto;
-    flex-shrink: 0;
-  }
-  .list-title {
-    padding: 12px 16px;
-    font-size: 12px;
-    font-weight: 700;
-    color: #64748b;
-    border-bottom: 1px solid #e2e8f0;
+  .sidebar-head {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--c-border);
     position: sticky;
     top: 0;
-    background: #fff;
+    background: var(--c-surface);
+    z-index: 5;
   }
+  .sidebar-head .title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-2);
+  }
+  .sidebar-head .title { font-size: var(--text-sm); font-weight: var(--fw-bold); color: var(--c-text-muted); text-transform: uppercase; letter-spacing: .06em; }
+  .sidebar-head .badges { display: flex; gap: 4px; align-items: center; }
+  .sidebar-head .search-input {
+    width: 100%;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-md);
+    padding: 7px 11px;
+    font-size: var(--text-base);
+    background: var(--c-surface-alt);
+    outline: none;
+  }
+  .sidebar-head .search-input:focus { border-color: var(--c-brand-700); background: #fff; }
+  .conv-list { flex: 1; overflow-y: auto; }
   .conv {
-    padding: 12px 16px;
-    border-bottom: 1px solid #f1f5f9;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--c-surface-alt);
     cursor: pointer;
+    display: flex;
+    gap: 11px;
+    transition: background var(--transition-fast);
   }
-  .conv:hover { background: #f8fafc; }
-  .conv.active { background: #eff6ff; border-left: 3px solid #1d4ed8; padding-left: 13px; }
-  .conv .top { display: flex; justify-content: space-between; align-items: center; }
-  .conv .name { font-weight: 700; font-size: 14px; }
+  .conv:hover { background: var(--c-surface-alt); }
+  .conv.active {
+    background: var(--c-brand-50);
+    box-shadow: inset 3px 0 0 var(--c-brand-700);
+  }
+  .conv .avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    background: var(--c-brand-100);
+    color: var(--c-brand-800);
+    font-weight: var(--fw-bold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: var(--text-md);
+    text-transform: uppercase;
+  }
+  .conv .avatar.escalated { background: #fee2e2; color: #b91c1c; }
+  .conv .body { flex: 1; min-width: 0; }
+  .conv .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .conv .name { font-weight: var(--fw-bold); font-size: var(--text-base); color: var(--c-text); }
+  .conv .when { font-size: var(--text-xs); color: var(--c-text-faint); flex-shrink: 0; }
   .conv .preview {
-    font-size: 12px;
-    color: #64748b;
-    margin-top: 4px;
+    font-size: var(--text-sm);
+    color: var(--c-text-muted);
+    margin: 3px 0 4px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .conv .meta { margin-top: 6px; display: flex; gap: 5px; flex-wrap: wrap; }
-
-  .chip {
-    font-size: 10px;
-    padding: 2px 7px;
-    border-radius: 999px;
-    font-weight: 600;
+  .conv .meta-row { display: flex; gap: 4px; flex-wrap: wrap; }
+  .conv .conv-id { font-size: var(--text-xs); color: var(--c-text-faint); margin-left: auto; }
+  .empty-list {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--c-text-faint);
+    font-size: var(--text-sm);
+    line-height: var(--leading-base);
   }
-  .chip.open { background: #dbeafe; color: #1e40af; }
-  .chip.escalated { background: #fee2e2; color: #b91c1c; }
-  .chip.closed { background: #e2e8f0; color: #475569; }
-  .chip.cat { background: #f1f5f9; color: #475569; }
-  .chip.risk-low { background: #dcfce7; color: #166534; }
-  .chip.risk-medium { background: #fef3c7; color: #92400e; }
-  .chip.risk-high { background: #fee2e2; color: #b91c1c; }
-  .chip.sent { background: #f1f5f9; color: #334155; }
 
-  /* ----- 상세 ----- */
-  .detail { flex: 1; display: flex; overflow: hidden; }
-  .empty {
+  /* ---------- 본문 (선택된 상담 상세) ---------- */
+  .detail { flex: 1; display: flex; overflow: hidden; min-width: 0; }
+  .none {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--c-text-faint);
+    background: var(--c-surface-alt);
+    padding: var(--space-6);
+  }
+  .none .icon {
+    width: 60px; height: 60px;
+    border-radius: 999px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #94a3b8;
-    font-size: 14px;
+    color: var(--c-text-faint);
+    margin-bottom: var(--space-4);
   }
+  .none .icon svg { width: 28px; height: 28px; }
+  .none .title { font-size: var(--text-md); font-weight: var(--fw-bold); color: var(--c-text); margin-bottom: 6px; }
+  .none .desc { font-size: var(--text-sm); color: var(--c-text-muted); text-align: center; }
+  .none .hint {
+    margin-top: var(--space-5);
+    font-size: var(--text-xs);
+    color: var(--c-text-faint);
+  }
+  .none .hint kbd {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+  }
+
   .transcript-pane {
     flex: 1;
     display: flex;
     flex-direction: column;
-    border-right: 1px solid #e2e8f0;
+    border-right: 1px solid var(--c-border);
     min-width: 0;
+    background: var(--c-surface);
   }
   .pane-head {
-    padding: 12px 18px;
-    border-bottom: 1px solid #e2e8f0;
-    background: #fff;
+    padding: var(--space-3) var(--space-5);
+    border-bottom: 1px solid var(--c-border);
+    background: var(--c-surface);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: var(--space-3);
   }
-  .pane-head .name { font-weight: 700; font-size: 15px; }
-  .pane-head .status-btns { display: flex; gap: 6px; }
-  .status-btns button {
-    font-size: 11px;
-    padding: 5px 10px;
-    border-radius: 7px;
-    border: 1px solid #cbd5e1;
-    background: #fff;
-    cursor: pointer;
-    font-weight: 600;
-    color: #475569;
-  }
-  .status-btns button.sel-open { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
-  .status-btns button.sel-escalated { background: #dc2626; color: #fff; border-color: #dc2626; }
-  .status-btns button.sel-closed { background: #475569; color: #fff; border-color: #475569; }
+  .pane-head .info { display: flex; align-items: center; gap: var(--space-3); }
+  .pane-head .name { font-weight: var(--fw-bold); font-size: var(--text-md); }
+  .pane-head .conv-id { color: var(--c-text-faint); font-size: var(--text-sm); }
+  .status-btns { display: flex; gap: 4px; }
+  .status-btns .btn { padding: 5px 11px; font-size: var(--text-xs); font-weight: var(--fw-semibold); }
+  .status-btns .btn.sel-open      { background: var(--c-brand-700); color: #fff; border-color: var(--c-brand-700); }
+  .status-btns .btn.sel-escalated { background: var(--c-danger); color: #fff; border-color: var(--c-danger); }
+  .status-btns .btn.sel-closed    { background: var(--c-text); color: #fff; border-color: var(--c-text); }
 
   .transcript {
     flex: 1;
     overflow-y: auto;
-    padding: 16px 18px;
+    padding: var(--space-4) var(--space-5);
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    background: #f8fafc;
+    gap: var(--space-3);
+    background: var(--c-surface-alt);
   }
-  .msg { max-width: 78%; display: flex; flex-direction: column; }
+  .msg { display: flex; gap: 8px; align-items: flex-end; max-width: 82%; }
   .msg.customer { align-self: flex-start; }
-  .msg.ai, .msg.agent { align-self: flex-end; align-items: flex-end; }
-  .msg .who { font-size: 11px; color: #64748b; margin-bottom: 3px; }
+  .msg.ai, .msg.agent { align-self: flex-end; flex-direction: row-reverse; }
+  .msg .av {
+    width: 28px; height: 28px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 10px; font-weight: var(--fw-bold);
+    color: var(--c-surface);
+  }
+  .msg.customer .av { background: #64748b; }
+  .msg.ai .av { background: var(--c-info); }
+  .msg.agent .av { background: var(--c-brand-700); }
+  .msg .col { display: flex; flex-direction: column; min-width: 0; }
+  .msg.customer .col { align-items: flex-start; }
+  .msg.ai .col, .msg.agent .col { align-items: flex-end; }
+  .msg .who { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: 3px; font-weight: var(--fw-semibold); }
   .msg .bubble {
-    padding: 9px 12px;
-    border-radius: 12px;
-    font-size: 13.5px;
-    line-height: 1.55;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    font-size: var(--text-base);
+    line-height: var(--leading-base);
     white-space: pre-wrap;
     word-break: break-word;
+    box-shadow: var(--shadow-xs);
   }
-  .msg.customer .bubble { background: #fff; border: 1px solid #e2e8f0; }
-  .msg.ai .bubble { background: #eef2ff; border: 1px solid #c7d2fe; color: #312e81; }
-  .msg.agent .bubble { background: #1d4ed8; color: #fff; }
-  .msg .tag { font-size: 10px; margin-top: 3px; color: #94a3b8; }
+  .msg.customer .bubble { background: var(--c-surface); border: 1px solid var(--c-border); border-bottom-left-radius: 4px; }
+  .msg.ai .bubble { background: var(--c-info-bg); border: 1px solid var(--c-info-border); color: var(--c-info); border-bottom-right-radius: 4px; }
+  .msg.agent .bubble { background: var(--c-brand-700); color: #fff; border-bottom-right-radius: 4px; }
+  .msg .tag {
+    font-size: var(--text-xs); margin-top: 3px;
+    color: var(--c-text-faint);
+  }
 
   .reply-box {
-    border-top: 1px solid #e2e8f0;
-    padding: 10px 14px;
-    background: #fff;
+    border-top: 1px solid var(--c-border);
+    padding: var(--space-3) var(--space-4);
+    background: var(--c-surface);
   }
   .reply-box textarea {
     width: 100%;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    padding: 9px;
-    font-size: 13px;
-    resize: vertical;
-    min-height: 56px;
+    border: 1px solid var(--c-border-strong);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    font-size: var(--text-base);
+    resize: none;
+    min-height: 60px;
     font-family: inherit;
+    outline: none;
+    transition: border-color var(--transition-fast);
   }
-  .reply-box .actions { display: flex; justify-content: flex-end; margin-top: 7px; }
-  .reply-box button {
-    background: #059669;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    padding: 8px 18px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  /* ----- AI 패널 ----- */
-  .ai-pane {
-    width: 340px;
-    background: #fff;
-    overflow-y: auto;
-    flex-shrink: 0;
-    padding: 14px;
-  }
-  .card {
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-  .card h3 {
-    font-size: 12px;
-    font-weight: 700;
-    color: #1d4ed8;
-    margin-bottom: 8px;
+  .reply-box textarea:focus { border-color: var(--c-brand-700); box-shadow: var(--shadow-focus); }
+  .reply-box .row {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-top: var(--space-2);
   }
-  .card .src { font-size: 9px; color: #94a3b8; font-weight: 600; }
-  .card p { font-size: 13px; line-height: 1.6; color: #334155; }
-  .card .muted { color: #94a3b8; font-size: 12px; }
-  .card ul { margin-left: 16px; font-size: 12.5px; color: #334155; line-height: 1.7; }
-  .row-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
-  .btn-ai {
-    width: 100%;
-    background: #1d4ed8;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    padding: 9px;
-    font-size: 12.5px;
-    font-weight: 600;
-    cursor: pointer;
-    margin-bottom: 8px;
+  .reply-box .row .hint { font-size: var(--text-xs); color: var(--c-text-faint); }
+
+  /* ---------- AI 패널 (오른쪽) ---------- */
+  .ai-pane {
+    width: 360px;
+    background: var(--c-surface-alt);
+    overflow-y: auto;
+    flex-shrink: 0;
+    padding: var(--space-4);
   }
-  .btn-ai:disabled { background: #94a3b8; cursor: progress; }
-  .rec {
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 9px;
-    margin-bottom: 8px;
-    background: #f8fafc;
-  }
-  .rec .rtitle { font-size: 12px; font-weight: 700; color: #0f172a; }
-  .rec .rans { font-size: 12.5px; color: #334155; line-height: 1.55; margin: 5px 0; }
-  .rec .rfoot { display: flex; justify-content: space-between; align-items: center; }
-  .rec .conf { font-size: 10px; color: #64748b; }
-  .rec button {
-    font-size: 10.5px;
-    padding: 4px 9px;
-    border-radius: 6px;
-    border: 1px solid #1d4ed8;
-    background: #fff;
-    color: #1d4ed8;
-    cursor: pointer;
-    font-weight: 600;
-  }
-  .sent-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .pw-input {
-    width: 100%;
-    border: 1px solid #cbd5e1;
-    border-radius: 7px;
-    padding: 8px 10px;
-    font-size: 12.5px;
-    margin-bottom: 7px;
-    outline: none;
-  }
-  .pw-input:focus { border-color: #1d4ed8; }
-  .pw-account {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 7px;
-    padding: 9px;
-    margin-top: 9px;
-    font-size: 12.5px;
-    line-height: 1.6;
-  }
-  .pw-sent {
-    background: #ecfdf5;
-    border: 1px solid #a7f3d0;
-    color: #065f46;
-    border-radius: 7px;
-    padding: 9px;
+  .ai-pane .card { margin-bottom: var(--space-3); }
+  .ai-pane .card-head { padding: 12px 14px; }
+  .ai-pane .card-head .title { font-size: var(--text-sm); color: var(--c-brand-700); font-weight: var(--fw-bold); }
+  .ai-pane .card-head .src { font-size: 10px; color: var(--c-text-faint); font-weight: var(--fw-semibold); text-transform: uppercase; }
+  .ai-pane .card-body { padding: 12px 14px; }
+  .ai-pane .card-body p { font-size: var(--text-base); line-height: var(--leading-base); color: var(--c-text-muted); }
+  .ai-pane .card-body ul { margin-left: var(--space-4); font-size: var(--text-sm); color: var(--c-text-muted); line-height: 1.7; }
+  .ai-pane .muted { color: var(--c-text-faint); font-size: var(--text-sm); }
+  .ai-pane .actions { display: flex; gap: 6px; margin-bottom: var(--space-3); }
+  .ai-pane .actions .btn { flex: 1; }
+  .ai-pane .row-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: var(--space-2); }
+  .ai-pane .sent-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .ai-pane .score { font-size: var(--text-xs); color: var(--c-text-faint); margin-left: auto; font-variant-numeric: tabular-nums; }
+  .ai-pane .risk-warn {
+    color: var(--c-danger);
     margin-top: 8px;
-    font-size: 12px;
-    line-height: 1.6;
-    word-break: break-all;
+    font-weight: var(--fw-semibold);
+    font-size: var(--text-sm);
+    background: var(--c-danger-bg);
+    border: 1px solid var(--c-danger-border);
+    border-radius: var(--radius-sm);
+    padding: 6px 9px;
   }
-  .pw-sent a { color: #047857; }
-  .score { font-size: 12px; color: #64748b; }
+  .rec {
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    margin-bottom: 8px;
+    background: var(--c-surface);
+    transition: border-color var(--transition-fast);
+  }
+  .rec:hover { border-color: var(--c-border-strong); }
+  .rec .rtitle { font-size: var(--text-sm); font-weight: var(--fw-bold); color: var(--c-text); }
+  .rec .rans { font-size: var(--text-sm); color: var(--c-text-muted); line-height: var(--leading-base); margin: 5px 0; }
+  .rec .rfoot { display: flex; justify-content: space-between; align-items: center; }
+  .rec .conf { font-size: var(--text-xs); color: var(--c-text-faint); }
+  .pw-input { margin-bottom: 8px; }
+
+  /* ---------- 반응형 ---------- */
+  @media (max-width: 980px) {
+    .ai-pane { display: none; }
+  }
+  @media (max-width: 720px) {
+    .work-area { flex-direction: column; }
+    .sidebar { width: 100%; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--c-border); }
+  }
 </style>
 </head>
 <body>
 <header id="app-nav"></header>
-<header class="page-head">
-  <h1>상담원 콘솔</h1>
-  <div style="display:flex;gap:8px;align-items:center">
-    <a class="badge" id="learn-badge" href="/knowledge" title="학습 데이터 관리">학습 0건</a>
-    <span class="badge" id="mode-badge">·</span>
-  </div>
-</header>
 
-<div class="layout">
-  <div class="list">
-    <div class="list-title">상담 목록</div>
-    <div id="conv-list"></div>
-  </div>
+<div class="work-area">
+  <!-- 사이드바 -->
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <div class="title-row">
+        <div class="title">상담 목록</div>
+        <div class="badges">
+          <span class="chip" id="mode-badge" style="font-size:10px">·</span>
+          <a class="chip" id="learn-badge" href="/knowledge" style="font-size:10px;text-decoration:none">학습 0</a>
+        </div>
+      </div>
+      <input class="search-input" id="conv-search" placeholder="고객명·키워드로 필터…" autocomplete="off" />
+    </div>
+    <div class="conv-list" id="conv-list"></div>
+  </aside>
 
-  <div class="detail" id="detail">
-    <div class="empty">왼쪽에서 상담을 선택하세요.</div>
-  </div>
+  <!-- 본문 -->
+  <main class="detail" id="detail">
+    <div class="none">
+      <div class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M21 11.5c0 4.7-4 8.5-9 8.5-1.4 0-2.7-.3-3.9-.8L3 21l1.3-4.5C3.5 15.2 3 13.4 3 11.5 3 6.8 7 3 12 3s9 3.8 9 8.5z" />
+        </svg>
+      </div>
+      <div class="title">상담을 선택하세요</div>
+      <div class="desc">왼쪽 목록에서 응대할 상담을 클릭하면 대화 내역과 AI 분석이 표시됩니다.</div>
+      <div class="hint">검색은 <kbd>고객명</kbd> 또는 <kbd>키워드</kbd> 로 가능합니다.</div>
+    </div>
+  </main>
 </div>
 
 <script src="/assets/ui.js"></script>
+<script src="/assets/nav.js"></script>
 <script>
+const $ = (id) => document.getElementById(id);
 const API = "";
 let activeId = null;
+let conversations = [];
+let filterText = "";
 let listTimer = null;
 let detailTimer = null;
 let lastRenderedMsgIds = "";
 
-const $ = (id) => document.getElementById(id);
-function escapeHtml(t) {
-  const d = document.createElement("div");
-  d.textContent = t == null ? "" : t;
-  return d.innerHTML;
-}
 const STATUS_LABEL = { open: "진행중", escalated: "에스컬레이션", closed: "종료" };
-const RISK_LABEL = { low: "위험 낮음", medium: "위험 보통", high: "위험 높음" };
+const RISK_LABEL   = { low: "위험 낮음", medium: "위험 보통", high: "위험 높음" };
 const WHO = { customer: "고객", ai: "AI 상담봇", agent: "상담원" };
 
-const MODE_LABEL = { claude: "Claude", ollama: "Ollama", mock: "데모 모드" };
+function relTime(iso) {
+  if (!iso) return "";
+  try {
+    const t = new Date(iso).getTime();
+    const diff = (Date.now() - t) / 1000;
+    if (diff < 60) return "방금 전";
+    if (diff < 3600) return `${Math.floor(diff/60)}분 전`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}시간 전`;
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch (e) { return ""; }
+}
+
+function initial(name) {
+  if (!name) return "?";
+  return name.trim().charAt(0).toUpperCase();
+}
 
 async function loadConfig() {
   try {
-    const cfg = await (await fetch(API + "/api/config")).json();
-    const name = MODE_LABEL[cfg.ai_mode] || "데모 모드";
-    $("mode-badge").textContent =
-      cfg.ai_mode === "mock" ? name : name + " · " + cfg.model;
-  } catch (e) {
-    $("mode-badge").textContent = "오프라인";
-  }
+    const cfg = await (await fetch("/api/config")).json();
+    const labels = { claude: "Claude", ollama: "Ollama", mock: "데모 모드" };
+    const name = labels[cfg.ai_mode] || "데모 모드";
+    $("mode-badge").textContent = cfg.ai_mode === "mock" ? name : `${name} · ${cfg.model}`;
+  } catch (e) { $("mode-badge").textContent = "오프라인"; }
 }
 
 async function loadKnowledge() {
   try {
-    const k = await (await fetch(API + "/api/knowledge")).json();
-    const mode = k.embeddings ? "의미 검색" : "키워드 검색";
-    $("learn-badge").textContent = `학습 ${k.count}건 · ${mode}`;
+    const k = await (await fetch("/api/knowledge")).json();
+    const mode = k.embeddings ? "의미" : "키워드";
+    $("learn-badge").textContent = `학습 ${k.count} · ${mode}`;
   } catch (e) { /* 무시 */ }
 }
 
 async function loadList() {
-  let conversations;
   try {
-    conversations = await (await fetch(API + "/api/conversations")).json();
-  } catch (e) { return; }
+    conversations = await (await fetch("/api/conversations")).json();
+    renderList();
+  } catch (e) { /* 무시 */ }
+}
 
+function renderList() {
   const box = $("conv-list");
-  box.innerHTML = "";
-  if (!conversations.length) {
-    box.innerHTML = '<div style="padding:16px;color:#94a3b8;font-size:13px">상담이 아직 없습니다.</div>';
+  const f = filterText.trim().toLowerCase();
+  const filtered = !f ? conversations : conversations.filter((c) =>
+    (c.customer_name || "").toLowerCase().includes(f) ||
+    (c.last_message || "").toLowerCase().includes(f) ||
+    (c.summary || "").toLowerCase().includes(f) ||
+    (c.category || "").toLowerCase().includes(f));
+
+  if (!filtered.length) {
+    box.innerHTML = `<div class="empty-list">${conversations.length ? "검색 결과가 없습니다." : "상담이 아직 없습니다."}</div>`;
     return;
   }
-  conversations.forEach((c) => {
-    const div = document.createElement("div");
-    div.className = "conv" + (c.id === activeId ? " active" : "");
-    let meta = `<span class="chip ${c.status}">${STATUS_LABEL[c.status] || c.status}</span>`;
-    if (c.category) meta += `<span class="chip cat">${escapeHtml(c.category)}</span>`;
-    if (c.risk_level) meta += `<span class="chip risk-${c.risk_level}">${RISK_LABEL[c.risk_level]}</span>`;
-    div.innerHTML =
-      `<div class="top"><span class="name">${escapeHtml(c.customer_name)}</span>` +
-      `<span style="font-size:11px;color:#94a3b8">#${c.id}</span></div>` +
-      `<div class="preview">${escapeHtml(c.last_message || "메시지 없음")}</div>` +
-      `<div class="meta">${meta}</div>`;
-    div.addEventListener("click", () => selectConversation(c.id));
-    box.appendChild(div);
+  box.innerHTML = filtered.map((c) => {
+    const escalated = c.status === "escalated" || c.risk_level === "high";
+    let chips = `<span class="chip ${c.status === "open" ? "chip-brand" : c.status === "escalated" ? "chip-danger" : "chip-neutral"}">${STATUS_LABEL[c.status] || c.status}</span>`;
+    if (c.category) chips += `<span class="chip">${UI.escapeHtml(c.category)}</span>`;
+    if (c.risk_level && c.risk_level !== "low") {
+      const cls = c.risk_level === "high" ? "chip-danger" : "chip-warning";
+      chips += `<span class="chip ${cls}">${RISK_LABEL[c.risk_level]}</span>`;
+    }
+    return `
+      <div class="conv ${c.id === activeId ? "active" : ""}" data-id="${c.id}">
+        <div class="avatar ${escalated ? "escalated" : ""}">${UI.escapeHtml(initial(c.customer_name))}</div>
+        <div class="body">
+          <div class="top">
+            <span class="name">${UI.escapeHtml(c.customer_name || "고객")}</span>
+            <span class="when">${UI.escapeHtml(relTime(c.updated_at))}</span>
+          </div>
+          <div class="preview">${UI.escapeHtml(c.last_message || "메시지 없음")}</div>
+          <div class="meta-row">${chips}<span class="conv-id">#${c.id}</span></div>
+        </div>
+      </div>`;
+  }).join("");
+  box.querySelectorAll("[data-id]").forEach((el) => {
+    el.addEventListener("click", () => selectConversation(parseInt(el.dataset.id, 10)));
   });
 }
 
 async function selectConversation(id) {
   activeId = id;
   lastRenderedMsgIds = "";
-  await loadList();
+  renderList();
   await loadDetail(true);
   if (detailTimer) clearInterval(detailTimer);
   detailTimer = setInterval(() => loadDetail(false), 4000);
@@ -383,7 +431,7 @@ async function loadDetail(rebuild) {
   if (!activeId) return;
   let conv;
   try {
-    conv = await (await fetch(API + `/api/conversations/${activeId}`)).json();
+    conv = await (await fetch(`/api/conversations/${activeId}`)).json();
   } catch (e) { return; }
   if (rebuild) renderDetailShell(conv);
   renderTranscript(conv);
@@ -394,36 +442,46 @@ function renderDetailShell(conv) {
   $("detail").innerHTML = `
     <div class="transcript-pane">
       <div class="pane-head">
-        <div>
-          <div class="name">${escapeHtml(conv.customer_name)} <span style="color:#94a3b8;font-size:12px">#${conv.id}</span></div>
+        <div class="info">
+          <span class="name">${UI.escapeHtml(conv.customer_name)}</span>
+          <span class="conv-id">#${conv.id}</span>
         </div>
         <div class="status-btns" id="status-btns"></div>
       </div>
       <div class="transcript" id="transcript"></div>
       <div class="reply-box">
         <textarea id="reply-text" placeholder="고객에게 보낼 답변을 입력하거나, 오른쪽 추천 답변을 사용하세요."></textarea>
-        <div class="actions"><button id="send-reply">답변 전송</button></div>
+        <div class="row">
+          <span class="hint">Enter 줄바꿈 · ⌘+Enter 전송</span>
+          <button class="btn btn-success" id="send-reply">답변 전송</button>
+        </div>
       </div>
     </div>
-    <div class="ai-pane">
-      <button class="btn-ai" id="btn-analyze">AI 요약 · 분류 실행</button>
-      <button class="btn-ai" id="btn-recommend" style="background:#059669">답변 추천 받기</button>
+    <aside class="ai-pane">
+      <div class="actions">
+        <button class="btn btn-primary" id="btn-analyze">AI 요약·분류</button>
+        <button class="btn btn-success" id="btn-recommend">답변 추천</button>
+      </div>
       <div class="card" id="card-sentiment"></div>
       <div class="card" id="card-summary"></div>
       <div class="card" id="card-recommend">
-        <h3>추천 답변</h3>
-        <p class="muted">'답변 추천 받기'를 눌러 FAQ 기반 추천을 받아보세요.</p>
+        <div class="card-head"><div class="title">추천 답변</div></div>
+        <div class="card-body"><p class="muted">'답변 추천' 을 눌러 FAQ·과거 사례 기반 추천을 받아보세요.</p></div>
       </div>
       <div class="card" id="card-password">
-        <h3>비밀번호 재설정 지원</h3>
-        <input class="pw-input" id="pw-query" placeholder="고객 이메일 또는 아이디" />
-        <button class="btn-ai" id="pw-verify-btn" style="margin-bottom:0">계정 확인</button>
-        <div id="pw-result"></div>
+        <div class="card-head"><div class="title">비밀번호 재설정 지원</div></div>
+        <div class="card-body">
+          <input class="input pw-input" id="pw-query" placeholder="고객 이메일 또는 아이디" />
+          <button class="btn btn-primary btn-block" id="pw-verify-btn">계정 확인</button>
+          <div id="pw-result"></div>
+        </div>
       </div>
-    </div>`;
-
+    </aside>`;
   renderStatusButtons(conv.status);
   $("send-reply").addEventListener("click", sendReply);
+  $("reply-text").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendReply(); }
+  });
   $("btn-analyze").addEventListener("click", runAnalyze);
   $("btn-recommend").addEventListener("click", runRecommend);
   $("pw-verify-btn").addEventListener("click", verifyAccount);
@@ -433,13 +491,12 @@ function renderDetailShell(conv) {
 function renderStatusButtons(current) {
   const box = $("status-btns");
   if (!box) return;
-  box.innerHTML = "";
-  ["open", "escalated", "closed"].forEach((s) => {
-    const b = document.createElement("button");
-    b.textContent = STATUS_LABEL[s];
-    if (s === current) b.className = "sel-" + s;
-    b.addEventListener("click", () => changeStatus(s));
-    box.appendChild(b);
+  box.innerHTML = ["open", "escalated", "closed"].map((s) => {
+    const cls = s === current ? `btn-secondary sel-${s}` : "btn-secondary";
+    return `<button class="btn ${cls}" data-status="${s}">${STATUS_LABEL[s]}</button>`;
+  }).join("");
+  box.querySelectorAll("[data-status]").forEach((b) => {
+    b.addEventListener("click", () => changeStatus(b.dataset.status));
   });
 }
 
@@ -447,19 +504,21 @@ function renderTranscript(conv) {
   const box = $("transcript");
   if (!box) return;
   const ids = (conv.messages || []).map((m) => m.id).join(",");
-  if (ids === lastRenderedMsgIds) return; // 변경 없으면 건너뜀
+  if (ids === lastRenderedMsgIds) { renderStatusButtons(conv.status); return; }
   lastRenderedMsgIds = ids;
   box.innerHTML = "";
   (conv.messages || []).forEach((m) => {
     const div = document.createElement("div");
     div.className = "msg " + m.role;
+    const av = m.role === "customer" ? "C" : (m.role === "ai" ? "AI" : "상");
     let tag = "";
     if (m.role === "customer" && m.sentiment) {
-      tag = `<div class="tag">감정: ${escapeHtml(m.sentiment)}</div>`;
+      tag = `<div class="tag">감정: ${UI.escapeHtml(m.sentiment)}</div>`;
     }
     div.innerHTML =
-      `<div class="who">${WHO[m.role] || m.role}</div>` +
-      `<div class="bubble">${escapeHtml(m.content)}</div>` + tag;
+      `<div class="av">${av}</div>` +
+      `<div class="col"><div class="who">${WHO[m.role] || m.role}</div>` +
+      `<div class="bubble">${UI.escapeHtml(m.content)}</div>${tag}</div>`;
     box.appendChild(div);
   });
   box.scrollTop = box.scrollHeight;
@@ -467,113 +526,106 @@ function renderTranscript(conv) {
 }
 
 function renderAnalysis(conv) {
-  // 감정 분석 카드
+  // 감정
   const cs = $("card-sentiment");
   if (cs) {
     if (conv.sentiment) {
       const risk = conv.risk_level || "low";
-      cs.innerHTML =
-        `<h3>감정 분석</h3>` +
-        `<div class="sent-line">` +
-        `<span class="chip sent">${escapeHtml(conv.sentiment)}</span>` +
-        `<span class="chip risk-${risk}">${RISK_LABEL[risk]}</span>` +
-        `<span class="score">점수 ${conv.sentiment_score != null ? conv.sentiment_score : "-"}</span>` +
-        `</div>` +
-        (risk === "high"
-          ? `<p style="color:#b91c1c;margin-top:8px;font-weight:600">⚠ 위험 상담으로 자동 에스컬레이션되었습니다.</p>`
-          : "");
+      const riskClass = { low: "chip-success", medium: "chip-warning", high: "chip-danger" }[risk] || "chip";
+      cs.innerHTML = `
+        <div class="card-head"><div class="title">감정 분석</div></div>
+        <div class="card-body">
+          <div class="sent-row">
+            <span class="chip chip-brand">${UI.escapeHtml(conv.sentiment)}</span>
+            <span class="chip ${riskClass}">${RISK_LABEL[risk]}</span>
+            <span class="score">점수 ${conv.sentiment_score != null ? conv.sentiment_score : "-"}</span>
+          </div>
+          ${risk === "high" ? `<div class="risk-warn">⚠ 위험 상담 — 자동 에스컬레이션됨</div>` : ""}
+        </div>`;
     } else {
-      cs.innerHTML = `<h3>감정 분석</h3><p class="muted">고객 메시지가 수신되면 자동 분석됩니다.</p>`;
+      cs.innerHTML = `<div class="card-head"><div class="title">감정 분석</div></div><div class="card-body"><p class="muted">고객 메시지가 수신되면 자동 분석됩니다.</p></div>`;
     }
   }
-
-  // 요약·분류 카드
+  // 요약·분류
   const sm = $("card-summary");
   if (sm) {
     if (conv.summary) {
-      let tags = (conv.tags || [])
-        .map((t) => `<span class="chip cat">${escapeHtml(t)}</span>`)
-        .join("");
-      let kp = (conv.key_points || [])
-        .map((k) => `<li>${escapeHtml(k)}</li>`)
-        .join("");
-      sm.innerHTML =
-        `<h3>상담 요약 · 분류</h3>` +
-        `<p>${escapeHtml(conv.summary)}</p>` +
-        (conv.category ? `<div class="row-tags"><span class="chip cat">카테고리: ${escapeHtml(conv.category)}</span></div>` : "") +
-        (tags ? `<div class="row-tags">${tags}</div>` : "") +
-        (kp ? `<div style="margin-top:8px;font-size:11px;color:#64748b;font-weight:600">핵심 사항</div><ul>${kp}</ul>` : "");
+      const tags = (conv.tags || []).map((t) => `<span class="chip">${UI.escapeHtml(t)}</span>`).join("");
+      const kp = (conv.key_points || []).map((k) => `<li>${UI.escapeHtml(k)}</li>`).join("");
+      sm.innerHTML = `
+        <div class="card-head"><div class="title">상담 요약·분류</div></div>
+        <div class="card-body">
+          <p>${UI.escapeHtml(conv.summary)}</p>
+          <div class="row-tags">
+            ${conv.category ? `<span class="chip chip-brand">${UI.escapeHtml(conv.category)}</span>` : ""}
+            ${tags}
+          </div>
+          ${kp ? `<div style="margin-top:10px;font-size:var(--text-xs);color:var(--c-text-muted);font-weight:var(--fw-bold);text-transform:uppercase;letter-spacing:.05em">핵심 사항</div><ul>${kp}</ul>` : ""}
+        </div>`;
     } else {
-      sm.innerHTML = `<h3>상담 요약 · 분류</h3><p class="muted">'AI 요약 · 분류 실행'을 눌러 분석하세요.</p>`;
+      sm.innerHTML = `<div class="card-head"><div class="title">상담 요약·분류</div></div><div class="card-body"><p class="muted">'AI 요약·분류' 를 눌러 분석하세요.</p></div>`;
     }
   }
 }
 
 async function runAnalyze() {
   const btn = $("btn-analyze");
-  btn.disabled = true;
-  btn.textContent = "분석 중…";
+  btn.disabled = true; btn.textContent = "분석 중…";
   try {
-    const res = await fetch(API + `/api/conversations/${activeId}/analyze`, { method: "POST" });
+    const res = await fetch(`/api/conversations/${activeId}/analyze`, { method: "POST" });
     const data = await res.json();
+    if (!res.ok) throw data;
     renderAnalysis(data.conversation);
     loadList();
   } catch (e) {
-    UI.toast("분석 중 오류가 발생했습니다.", { type: "danger" });
+    UI.toast(e?.detail || "분석 중 오류가 발생했습니다.", { type: "danger" });
   } finally {
-    btn.disabled = false;
-    btn.textContent = "AI 요약 · 분류 실행";
+    btn.disabled = false; btn.textContent = "AI 요약·분류";
   }
 }
 
 async function runRecommend() {
   const btn = $("btn-recommend");
-  btn.disabled = true;
-  btn.textContent = "추천 생성 중…";
+  btn.disabled = true; btn.textContent = "추천 생성 중…";
   try {
-    const res = await fetch(API + `/api/conversations/${activeId}/recommend`, { method: "POST" });
+    const res = await fetch(`/api/conversations/${activeId}/recommend`, { method: "POST" });
     const data = await res.json();
+    if (!res.ok) throw data;
     renderRecommendations(data.recommendations || [], data.source, data.past_cases || []);
   } catch (e) {
-    UI.toast("추천 생성 중 오류가 발생했습니다.", { type: "danger" });
+    UI.toast(e?.detail || "추천 생성 중 오류가 발생했습니다.", { type: "danger" });
   } finally {
-    btn.disabled = false;
-    btn.textContent = "답변 추천 받기";
+    btn.disabled = false; btn.textContent = "답변 추천";
   }
 }
 
 function renderRecommendations(recs, source, pastCases) {
   const card = $("card-recommend");
   const SRC = { claude: "Claude", ollama: "Ollama", mock: "데모" };
-  let html = `<h3>추천 답변 <span class="src">${SRC[source] || "데모"}</span></h3>`;
-  if (!recs.length) {
-    html += `<p class="muted">추천할 답변이 없습니다.</p>`;
-  } else {
-    recs.forEach((r, i) => {
-      html +=
-        `<div class="rec">` +
-        `<div class="rtitle">${escapeHtml(r.title)}</div>` +
-        `<div class="rans">${escapeHtml(r.answer)}</div>` +
-        `<div class="rfoot">` +
-        `<span class="conf">신뢰도 ${Math.round((r.confidence || 0) * 100)}%</span>` +
-        `<button data-idx="${i}">답변에 넣기</button>` +
-        `</div></div>`;
-    });
-  }
+  let html = `<div class="card-head"><div class="title">추천 답변</div><span class="src">${SRC[source] || "데모"}</span></div><div class="card-body">`;
+  if (!recs.length) html += `<p class="muted">추천할 답변이 없습니다.</p>`;
+  recs.forEach((r, i) => {
+    html += `<div class="rec">
+      <div class="rtitle">${UI.escapeHtml(r.title)}</div>
+      <div class="rans">${UI.escapeHtml(r.answer)}</div>
+      <div class="rfoot">
+        <span class="conf">신뢰도 ${Math.round((r.confidence || 0) * 100)}%</span>
+        <button class="btn btn-secondary btn-xs" data-idx="${i}">답변에 넣기</button>
+      </div>
+    </div>`;
+  });
   if (pastCases && pastCases.length) {
     const m = pastCases[0].method === "embedding" ? "의미 검색" : "키워드 검색";
-    html +=
-      `<div style="margin-top:10px;font-size:11px;color:#64748b;font-weight:700">` +
-      `학습된 과거 상담 참고 (${m})</div>`;
+    html += `<div style="margin-top:12px;font-size:var(--text-xs);color:var(--c-text-muted);font-weight:var(--fw-bold);text-transform:uppercase;letter-spacing:.05em">참고한 과거 상담 (${m})</div>`;
     pastCases.forEach((c) => {
-      html +=
-        `<div class="rec" style="background:#fffbeb;border-color:#fde68a">` +
-        `<div class="rtitle">Q. ${escapeHtml(c.question)}</div>` +
-        `<div class="rans">A. ${escapeHtml(c.answer)}</div>` +
-        `<div class="conf">상담 #${c.conversation_id} · 유사도 ${c.score}</div>` +
-        `</div>`;
+      html += `<div class="rec" style="background:var(--c-warning-bg);border-color:var(--c-warning-border)">
+        <div class="rtitle">Q. ${UI.escapeHtml(c.question)}</div>
+        <div class="rans">A. ${UI.escapeHtml(c.answer)}</div>
+        <div class="conf">상담 #${c.conversation_id} · 유사도 ${c.score}</div>
+      </div>`;
     });
   }
+  html += `</div>`;
   card.innerHTML = html;
   card.querySelectorAll("button[data-idx]").forEach((b) => {
     b.addEventListener("click", () => {
@@ -590,7 +642,7 @@ async function sendReply() {
   const btn = $("send-reply");
   btn.disabled = true;
   try {
-    await fetch(API + `/api/conversations/${activeId}/reply`, {
+    await fetch(`/api/conversations/${activeId}/reply`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: text }),
@@ -607,7 +659,7 @@ async function sendReply() {
 
 async function changeStatus(status) {
   try {
-    const res = await fetch(API + `/api/conversations/${activeId}/status`, {
+    const res = await fetch(`/api/conversations/${activeId}/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
@@ -615,7 +667,7 @@ async function changeStatus(status) {
     const conv = await res.json();
     renderStatusButtons(conv.status);
     loadList();
-    loadKnowledge(); // 종료 시 학습되므로 학습 현황 갱신
+    loadKnowledge();
   } catch (e) {
     UI.toast("상태 변경 중 오류가 발생했습니다.", { type: "danger" });
   }
@@ -626,10 +678,9 @@ async function verifyAccount() {
   const query = $("pw-query").value.trim();
   if (!query) return;
   const btn = $("pw-verify-btn");
-  btn.disabled = true;
-  btn.textContent = "확인 중…";
+  btn.disabled = true; btn.textContent = "확인 중…";
   try {
-    const res = await fetch(API + "/api/password/verify", {
+    const res = await fetch("/api/password/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
@@ -638,26 +689,24 @@ async function verifyAccount() {
   } catch (e) {
     UI.toast("계정 확인 중 오류가 발생했습니다.", { type: "danger" });
   } finally {
-    btn.disabled = false;
-    btn.textContent = "계정 확인";
+    btn.disabled = false; btn.textContent = "계정 확인";
   }
 }
 
 function renderPwResult(data) {
   const box = $("pw-result");
   if (!data.found) {
-    box.innerHTML = `<p class="muted" style="margin-top:9px">일치하는 계정을 찾을 수 없습니다.</p>`;
+    box.innerHTML = `<p class="muted" style="margin-top:10px;font-size:var(--text-sm)">일치하는 계정을 찾을 수 없습니다.</p>`;
     return;
   }
   const a = data.account;
-  box.innerHTML =
-    `<div class="pw-account">` +
-    `<div><b>${escapeHtml(a.name)}</b> · ${escapeHtml(a.username)}</div>` +
-    `<div class="conf">${escapeHtml(a.email_masked)}` +
-    `${a.phone_masked ? " · " + escapeHtml(a.phone_masked) : ""}</div>` +
-    `</div>` +
-    `<button class="btn-ai" id="pw-send-btn" style="margin:8px 0 0">재설정 링크 발송</button>` +
-    `<div id="pw-send-result"></div>`;
+  box.innerHTML = `
+    <div style="background:var(--c-surface-alt);border:1px solid var(--c-border);border-radius:var(--radius-md);padding:10px;margin-top:10px;font-size:var(--text-sm)">
+      <div><b>${UI.escapeHtml(a.name)}</b> · ${UI.escapeHtml(a.username)}</div>
+      <div style="color:var(--c-text-faint);font-size:var(--text-xs);margin-top:2px">${UI.escapeHtml(a.email_masked)}${a.phone_masked ? " · " + UI.escapeHtml(a.phone_masked) : ""}</div>
+    </div>
+    <button class="btn btn-primary btn-block" id="pw-send-btn" style="margin-top:10px">재설정 링크 발송</button>
+    <div id="pw-send-result"></div>`;
   $("pw-send-btn").addEventListener("click", sendReset);
 }
 
@@ -665,10 +714,9 @@ async function sendReset() {
   const query = $("pw-query").value.trim();
   if (!query) return;
   const btn = $("pw-send-btn");
-  btn.disabled = true;
-  btn.textContent = "발송 중…";
+  btn.disabled = true; btn.textContent = "발송 중…";
   try {
-    const res = await fetch(API + "/api/password/reset-request", {
+    const res = await fetch("/api/password/reset-request", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
@@ -676,35 +724,41 @@ async function sendReset() {
     const data = await res.json();
     const box = $("pw-send-result");
     if (!data.sent) {
-      box.innerHTML = `<p class="muted" style="margin-top:8px">${escapeHtml(data.message)}</p>`;
+      box.innerHTML = `<p class="muted" style="margin-top:8px;font-size:var(--text-sm)">${UI.escapeHtml(data.message)}</p>`;
       return;
     }
-    let html = `<div class="pw-sent">${escapeHtml(data.message)} (유효시간 ${data.expires_minutes}분)`;
+    let html = `<div style="background:var(--c-success-bg);border:1px solid var(--c-success-border);color:var(--c-success);border-radius:var(--radius-md);padding:9px;margin-top:9px;font-size:var(--text-sm);line-height:var(--leading-base);word-break:break-all">
+      ${UI.escapeHtml(data.message)} (유효시간 ${data.expires_minutes}분)`;
     if (data.channel === "log" && data.reset_link) {
-      html += `<br /><a href="${encodeURI(data.reset_link)}" target="_blank">${escapeHtml(data.reset_link)}</a>`;
+      html += `<br /><a href="${encodeURI(data.reset_link)}" target="_blank">${UI.escapeHtml(data.reset_link)}</a>`;
     }
     html += `</div>`;
     box.innerHTML = html;
   } catch (e) {
     UI.toast("재설정 링크 발송 중 오류가 발생했습니다.", { type: "danger" });
   } finally {
-    btn.disabled = false;
-    btn.textContent = "재설정 링크 발송";
+    btn.disabled = false; btn.textContent = "재설정 링크 발송";
   }
 }
 
-// 인증·로그아웃은 /assets/nav.js 가 담당. 여기서는 페이지 로직만 실행.
+// 부트스트랩
+$("conv-search").addEventListener("input", (e) => { filterText = e.target.value; renderList(); });
+// 단축키: '/' 로 검색창 포커스
+document.addEventListener("keydown", (e) => {
+  if (e.key === "/" && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
+    e.preventDefault(); $("conv-search").focus();
+  }
+});
+
 async function bootstrap() {
   loadConfig();
   loadKnowledge();
   await loadList();
-  // /knowledge 등에서 ?conv=N 으로 진입한 경우 해당 상담 자동 선택
   const initConv = new URLSearchParams(location.search).get("conv");
   if (initConv) selectConversation(parseInt(initConv, 10));
 }
 document.addEventListener("auth-ready", bootstrap);
 listTimer = setInterval(loadList, 5000);
 </script>
-<script src="/assets/nav.js"></script>
 </body>
 </html>
