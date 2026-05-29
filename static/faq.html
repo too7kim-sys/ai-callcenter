@@ -101,6 +101,7 @@
   </div>
   <div class="meta">
     <span class="chip chip-brand" id="count">·</span>
+    <button class="btn btn-secondary btn-sm hidden" id="voice-btn">🎙 음성 파일 학습</button>
     <button class="btn btn-primary btn-sm hidden" id="add-btn">+ FAQ 추가</button>
   </div>
 </header>
@@ -315,13 +316,154 @@ async function deleteFaq(id) {
   }
 }
 
+// ===== 음성 파일 학습 =====
+async function voiceLearn() {
+  // STT 가용성 확인
+  const statRes = await fetch("/api/voice/status").catch(() => null);
+  const stat = statRes && statRes.ok
+    ? await statRes.json()
+    : { available: false, error: "STT 정보를 가져오지 못했습니다." };
+
+  // 모달 본문 (파일 입력 + 변환 결과 + AI 제안 폼)
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <div class="title">음성 파일 학습</div>
+        <div class="desc">통화 녹취 파일을 업로드하면 STT 변환 후 AI 가 FAQ 후보를 제안합니다.</div>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label class="label">음성 파일</label>
+          <input class="input" type="file" id="vfile" accept=".wav,.mp3,.m4a,.mp4,.ogg,.flac,.webm" />
+          <div class="field-error" id="verr" style="margin-top:6px"></div>
+          <div class="muted" style="font-size:var(--text-xs);margin-top:6px">
+            지원 형식: wav / mp3 / m4a / mp4 / ogg / flac / webm · 25MB 이하 · 한국어 권장
+          </div>
+        </div>
+        <div id="vstatus" style="font-size:var(--text-sm);color:var(--c-text-muted);text-align:center;padding:14px 0;display:none"></div>
+        <div id="vresult" class="hidden">
+          <div class="field">
+            <label class="label">변환 결과 (녹취)</label>
+            <textarea class="textarea" id="vtranscript" rows="4" readonly style="background:var(--c-surface-alt)"></textarea>
+          </div>
+          <div style="font-size:var(--text-xs);color:var(--c-brand-700);font-weight:var(--fw-bold);margin:var(--space-3) 0 var(--space-2)">AI 추천 항목 — 검수 후 저장하세요</div>
+          <div class="field">
+            <label class="label">카테고리</label>
+            <input class="input" id="vcat" />
+          </div>
+          <div class="field">
+            <label class="label">질문</label>
+            <textarea class="textarea" id="vq" rows="2"></textarea>
+          </div>
+          <div class="field">
+            <label class="label">답변</label>
+            <textarea class="textarea" id="va" rows="4"></textarea>
+          </div>
+          <div class="field">
+            <label class="label">키워드 (쉼표로 구분)</label>
+            <input class="input" id="vkws" />
+          </div>
+          <div class="muted" id="vsource" style="font-size:var(--text-xs)"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="vclose">닫기</button>
+        <button class="btn btn-primary hidden" id="vsave">FAQ로 저장</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  requestAnimationFrame(() => backdrop.classList.add("open"));
+
+  function close() {
+    backdrop.classList.remove("open");
+    setTimeout(() => backdrop.remove(), 200);
+  }
+  document.getElementById("vclose").addEventListener("click", close);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  const esc = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", esc);
+
+  const save = document.getElementById("vsave");
+
+  // STT 사용 불가 시 안내
+  if (!stat.available) {
+    document.getElementById("verr").textContent =
+      "STT 엔진(faster-whisper)이 활성화되어 있지 않습니다. " +
+      "서버에 `pip install faster-whisper` 후 재시작해 주세요.";
+    document.getElementById("vfile").disabled = true;
+    return;
+  }
+
+  document.getElementById("vfile").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    document.getElementById("verr").textContent = "";
+    const statusEl = document.getElementById("vstatus");
+    statusEl.style.display = "block";
+    statusEl.textContent = "음성을 텍스트로 변환 중… (모델 첫 사용 시 다운로드로 1~2분 소요될 수 있습니다)";
+    try {
+      const form = new FormData();
+      form.append("audio", file);
+      const res = await fetch("/api/voice/transcribe", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw data;
+      statusEl.style.display = "none";
+      document.getElementById("vresult").classList.remove("hidden");
+      document.getElementById("vtranscript").value = data.transcript || "";
+      const sg = data.suggestion || {};
+      document.getElementById("vcat").value = sg.category || "기타";
+      document.getElementById("vq").value = sg.question || "";
+      document.getElementById("va").value = sg.answer || "";
+      document.getElementById("vkws").value = (sg.keywords || []).join(", ");
+      document.getElementById("vsource").textContent = `추천 출처: ${sg.source || "?"}`;
+      save.classList.remove("hidden");
+    } catch (e) {
+      statusEl.style.display = "none";
+      document.getElementById("verr").textContent = e?.detail || "변환에 실패했습니다.";
+    }
+  });
+
+  save.addEventListener("click", async () => {
+    const payload = {
+      category: document.getElementById("vcat").value.trim(),
+      question: document.getElementById("vq").value.trim(),
+      answer: document.getElementById("va").value.trim(),
+      keywords: document.getElementById("vkws").value.split(",").map((s) => s.trim()).filter(Boolean),
+    };
+    if (!payload.category || !payload.question || !payload.answer) {
+      UI.toast("카테고리·질문·답변을 모두 입력하세요.", { type: "warning" });
+      return;
+    }
+    try {
+      const res = await fetch("/api/faq", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw await res.json();
+      close();
+      UI.toast("FAQ에 등록했습니다.", { type: "success" });
+      await init();
+    } catch (e) {
+      UI.toast(e?.detail || "저장에 실패했습니다.", { type: "danger" });
+    }
+  });
+}
+
 $("search").addEventListener("input", (e) => { searchText = e.target.value; render(); });
 $("add-btn").addEventListener("click", addFaq);
+$("voice-btn").addEventListener("click", voiceLearn);
 
 document.addEventListener("auth-ready", (e) => {
   const user = e.detail;
-  canManageFaq = user && (user.role === "admin" || (user.permissions || []).includes("faq.manage"));
+  const perms = user?.permissions || [];
+  canManageFaq = user && (user.role === "admin" || perms.includes("faq.manage"));
   if (canManageFaq) $("add-btn").classList.remove("hidden");
+  if (user && (user.role === "admin" || perms.includes("voice.upload"))) {
+    $("voice-btn").classList.remove("hidden");
+  }
   init();
 });
 </script>

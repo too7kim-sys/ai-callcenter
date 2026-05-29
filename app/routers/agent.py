@@ -1,10 +1,13 @@
 """상담원 콘솔 API: 상담 목록, AI 요약·분류, 답변 추천, 답변 전송, 상태 변경."""
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+import os
+import tempfile
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from .. import ai, auth, faq, knowledge
+from .. import ai, auth, faq, knowledge, voice
 from ..database import get_db
 from ..models import Conversation, KnowledgeItem, Message
 from ..permissions import P
@@ -248,6 +251,73 @@ def update_faq(
     if item is None:
         raise HTTPException(status_code=404, detail="FAQ 항목을 찾을 수 없습니다.")
     return {**item, "source": "curated"}
+
+
+_MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25MB
+_ALLOWED_AUDIO = {".wav", ".mp3", ".m4a", ".mp4", ".ogg", ".flac", ".webm"}
+
+
+@router.get("/voice/status")
+def voice_status(_user=Depends(auth.require_permission(P.VOICE_UPLOAD))):
+    """STT 엔진 가용 여부 및 모델 정보."""
+    return {
+        "available": voice.is_available(),
+        "model": voice.WHISPER_MODEL,
+        "language": voice.WHISPER_LANG,
+        "error": voice.last_error(),
+    }
+
+
+@router.post("/voice/transcribe")
+async def transcribe_voice(
+    audio: UploadFile = File(...),
+    _user=Depends(auth.require_permission(P.VOICE_UPLOAD)),
+):
+    """업로드된 음성 파일을 STT 로 변환하고 FAQ 후보를 추출한다.
+
+    응답: {transcript, suggestion: {category, question, answer, keywords, source}}
+    """
+    if not voice.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail=voice.last_error()
+            or "음성 인식 엔진을 사용할 수 없습니다. 서버에 `faster-whisper` 설치가 필요합니다.",
+        )
+    suffix = os.path.splitext(audio.filename or "")[1].lower()
+    if suffix and suffix not in _ALLOWED_AUDIO:
+        raise HTTPException(
+            status_code=400,
+            detail=f"지원하지 않는 형식입니다 ({suffix}). " + ", ".join(sorted(_ALLOWED_AUDIO)) + " 만 허용됩니다.",
+        )
+    content = await audio.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="빈 파일입니다.")
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="파일이 너무 큽니다 (25MB 이하).")
+
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix or ".wav", delete=False)
+    try:
+        tmp.write(content)
+        tmp.close()
+        try:
+            transcript = voice.transcribe(tmp.name)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"음성 변환 중 오류: {exc}")
+        if not transcript:
+            raise HTTPException(status_code=400, detail="음성에서 텍스트를 추출하지 못했습니다.")
+        suggestion = ai.extract_faq_from_transcript(transcript)
+        return {
+            "transcript": transcript,
+            "suggestion": suggestion,
+            "filename": audio.filename,
+        }
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except Exception:
+            pass
 
 
 @router.delete("/faq/{entry_id}")

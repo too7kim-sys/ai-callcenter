@@ -113,6 +113,19 @@ SYSTEM_SUMMARY = """당신은 상담 내용을 요약하고 분류하는 시스�
 - key_points: 상담원이 알아야 할 핵심 사항 2~5개.
 """
 
+SYSTEM_EXTRACT_FAQ = """당신은 콜센터 통화 녹취에서 FAQ 항목을 추출하는 시스템입니다.
+주어진 녹취 텍스트를 읽고, 그 통화에서 다뤄진 핵심 문의 1건을 FAQ 항목으로 만들어 주세요.
+
+다음 JSON 형식으로만 응답하세요. JSON 외의 텍스트는 절대 출력하지 마세요.
+{"category": "<{categories} 중 하나>", "question": "<핵심 문의를 1문장으로>", "answer": "<상담원이 안내한 내용을 2~3문장으로 정중하게 정리>", "keywords": ["<검색용 키워드>", ...]}
+
+- question 은 고객 입장에서의 질문으로 작성
+- answer 는 상담원 응대 내용을 정중한 한국어 존댓말로 정리
+- 녹취에 명시적이지 않은 내용은 추측하지 말 것
+- keywords 는 2~5개의 핵심어
+"""
+
+
 SYSTEM_RECOMMEND = """당신은 상담원을 돕는 AI 어시스턴트입니다.
 아래 FAQ 지식베이스를 참고하여, 상담원이 고객에게 바로 보낼 수 있는 추천 답변을 2~3개 제안하세요.
 아래 JSON 형식으로만 응답하세요. JSON 외의 텍스트는 절대 출력하지 마세요.
@@ -205,6 +218,67 @@ def summarize(history):
         except Exception as exc:
             logger.warning("summarize: 모의 응답으로 폴백 (%s)", exc)
     return _mock_summary(history)
+
+
+def extract_faq_from_transcript(transcript):
+    """녹취 텍스트에서 FAQ 후보(카테고리·질문·답변·키워드)를 추출한다.
+
+    반환: {"category", "question", "answer", "keywords", "source"}
+    """
+    provider = _resolve_provider()
+    if provider != "mock" and transcript.strip():
+        try:
+            raw = _complete(
+                provider,
+                SYSTEM_EXTRACT_FAQ.replace("{categories}", "|".join(faq.CATEGORIES)),
+                [{"role": "user", "content": transcript.strip()[:6000]}],
+                max_tokens=700,
+                want_json=True,
+            )
+            data = _extract_json(raw)
+            return _normalize_extracted_faq(data, source=provider)
+        except Exception as exc:
+            logger.warning("extract_faq_from_transcript: 모의 응답으로 폴백 (%s)", exc)
+    return _mock_extract_faq(transcript)
+
+
+def _normalize_extracted_faq(data, source):
+    category = str(data.get("category", "기타")).strip()
+    if category not in VALID_CATEGORY:
+        category = "기타"
+    question = str(data.get("question", "")).strip() or "(질문 미상)"
+    answer = str(data.get("answer", "")).strip() or "(답변 미상)"
+    kws = data.get("keywords", [])
+    if not isinstance(kws, list):
+        kws = []
+    kws = [str(k).strip() for k in kws if str(k).strip()][:8]
+    return {
+        "category": category,
+        "question": question,
+        "answer": answer,
+        "keywords": kws,
+        "source": source,
+    }
+
+
+def _mock_extract_faq(transcript):
+    """LLM 없이 휴리스틱으로 FAQ 후보를 만든다."""
+    text = transcript.strip()
+    snippet = text[:200] if text else ""
+    category = _mock_category(text)
+    # 첫 물음표 직전을 질문 후보로 사용
+    qmark = text.find("?")
+    question = (text[: qmark + 1].strip() if qmark != -1 else snippet[:80]) or "(질문 미상)"
+    answer = text[qmark + 1:].strip()[:400] if qmark != -1 and len(text) > qmark + 1 else snippet
+    matched = faq.search(text, limit=2)
+    keywords = [it["category"] for it in matched] or [category]
+    return {
+        "category": category,
+        "question": question,
+        "answer": answer or "(답변 미상)",
+        "keywords": list(dict.fromkeys(keywords))[:6],
+        "source": "mock",
+    }
 
 
 def recommend(history, past_cases=None):

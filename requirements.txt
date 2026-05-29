@@ -3,3 +3,6 @@ uvicorn[standard]>=0.29
 sqlalchemy>=2.0
 anthropic>=0.40
 python-dotenv>=1.0
+python-multipart>=0.0.6
+# 선택: 음성 파일 학습(STT)에 사용. 미설치 시 음성 업로드 기능만 비활성화.
+faster-whisper>=1.0.0
