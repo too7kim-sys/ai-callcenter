@@ -12,6 +12,7 @@
 import json
 import logging
 import time
+import urllib.error
 import urllib.request
 
 from . import config, faq
@@ -325,16 +326,48 @@ def embeddings_available():
 
 
 def embed_text(text):
-    """텍스트를 임베딩 벡터로 변환한다 (Ollama). 불가능하면 None을 반환.
+    """텍스트를 임베딩 벡터로 변환한다 (Ollama). 불가능하면 None 을 반환.
 
-    상담 학습(RAG)의 의미 기반 검색에 사용된다.
+    상담 학습(RAG)의 의미 기반 검색에 사용된다. 신규 /api/embed
+    엔드포인트를 먼저 시도하고, 구버전 Ollama 의 경우 404 응답에
+    한해 레거시 /api/embeddings 로 폴백한다.
     """
     if not text or not text.strip() or not _ollama_available():
         return None
+    base = config.OLLAMA_BASE_URL.rstrip("/")
+    model = config.OLLAMA_EMBED_MODEL
+
+    # 1) 모던 엔드포인트: /api/embed  (요청: {model,input}, 응답: {embeddings:[[...]]})
     try:
         request = urllib.request.Request(
-            config.OLLAMA_BASE_URL.rstrip("/") + "/api/embeddings",
-            data=json.dumps({"model": config.OLLAMA_EMBED_MODEL, "prompt": text}).encode("utf-8"),
+            base + "/api/embed",
+            data=json.dumps({"model": model, "input": text}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT) as resp:
+            body = json.loads(resp.read())
+        # 신규 응답 형식: {"embeddings": [[...]]}
+        embeddings = body.get("embeddings")
+        if isinstance(embeddings, list) and embeddings and isinstance(embeddings[0], list):
+            return [float(x) for x in embeddings[0]]
+        # 일부 구현은 단일 형태 반환
+        if isinstance(body.get("embedding"), list):
+            return [float(x) for x in body["embedding"]]
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            logger.warning("embed_text: /api/embed 실패 (%s)", exc)
+            return None
+        # 404 면 레거시 엔드포인트 시도
+    except Exception as exc:
+        logger.warning("embed_text: /api/embed 실패 (%s)", exc)
+        return None
+
+    # 2) 레거시 엔드포인트: /api/embeddings  (요청: {model,prompt}, 응답: {embedding:[...]})
+    try:
+        request = urllib.request.Request(
+            base + "/api/embeddings",
+            data=json.dumps({"model": model, "prompt": text}).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -344,7 +377,7 @@ def embed_text(text):
         if isinstance(embedding, list) and embedding:
             return [float(x) for x in embedding]
     except Exception as exc:
-        logger.warning("embed_text: 임베딩 실패 (%s)", exc)
+        logger.warning("embed_text: /api/embeddings 폴백 실패 (%s)", exc)
     return None
 
 

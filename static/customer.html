@@ -210,6 +210,7 @@ const API = "";
 let conversationId = null;
 let renderedIds = new Set();
 let pollTimer = null;
+let sending = false;  // 전송 중에는 폴링을 일시 정지해 화면 중복 방지
 
 const $ = (id) => document.getElementById(id);
 
@@ -310,8 +311,10 @@ async function sendMessage() {
   const text = input.value.trim();
   if (!text || !conversationId) return;
 
+  if (sending) return; // 이미 전송 중이면 중복 무시
   input.value = "";
   $("send-btn").disabled = true;
+  sending = true;
   appendTemp(text); // 서버 저장 전 임시 표시 (응답 수신 시 교체)
   showTyping();
 
@@ -335,6 +338,7 @@ async function sendMessage() {
     err.textContent = "전송 중 오류가 발생했습니다. 다시 시도해 주세요.";
     $("messages").appendChild(err);
   } finally {
+    sending = false;
     $("send-btn").disabled = false;
     input.focus();
   }
@@ -344,7 +348,7 @@ function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   // 상담원이 보낸 답변을 반영하기 위한 주기적 갱신
   pollTimer = setInterval(async () => {
-    if (!conversationId) return;
+    if (!conversationId || sending) return;  // 전송 중에는 폴링 정지(중복 방지)
     try {
       const res = await fetch(API + `/api/conversations/${conversationId}`);
       if (res.ok) renderConversation(await res.json());
