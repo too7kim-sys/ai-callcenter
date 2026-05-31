@@ -62,6 +62,7 @@
   </div>
   <div class="meta">
     <span class="chip" id="count-chip">·</span>
+    <a class="btn btn-secondary btn-sm hidden" id="export-btn" href="/api/export/users.csv" download>CSV 다운로드</a>
   </div>
 </header>
 
@@ -340,6 +341,9 @@ document.addEventListener("auth-ready", (e) => {
   if (me && me.role !== "admin" && !(me.permissions || []).includes("user.manage")) {
     location.href = "/agent";
     return;
+  }
+  if (me && (me.role === "admin" || (me.permissions || []).includes("data.export"))) {
+    document.getElementById("export-btn").classList.remove("hidden");
   }
   loadAll();
 });

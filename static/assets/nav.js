@@ -5,11 +5,14 @@
 
 (function () {
   const NAV_ITEMS = [
+    { key: "dashboard",   href: "/dashboard",   label: "대시보드",    perm: "conversation.view" },
     { key: "agent",       href: "/agent",       label: "상담 콘솔",  perm: "conversation.view" },
     { key: "faq",         href: "/faq",         label: "FAQ",         perm: "faq.view" },
     { key: "knowledge",   href: "/knowledge",   label: "학습 데이터", perm: "knowledge.view" },
+    { key: "templates",   href: "/templates",   label: "답변 템플릿", perm: "conversation.reply" },
     { key: "users",       href: "/users",       label: "사용자 관리", perm: "user.manage" },
     { key: "permissions", href: "/permissions", label: "권한 관리",   perm: "permission.manage" },
+    { key: "audit",       href: "/audit",       label: "변경 이력",   perm: "audit.view" },
   ];
 
   function escapeHtml(text) {

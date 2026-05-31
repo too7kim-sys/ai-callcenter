@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>대시보드 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/ui.css" />
+<link rel="stylesheet" href="/assets/nav.css" />
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--space-5);
+  }
+  .stat-card .num {
+    font-size: var(--text-3xl);
+    font-weight: var(--fw-bold);
+    color: var(--c-text);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-card .label {
+    font-size: var(--text-xs);
+    color: var(--c-text-muted);
+    text-transform: uppercase;
+    font-weight: var(--fw-semibold);
+    letter-spacing: .04em;
+  }
+  .stat-card .sub { font-size: var(--text-xs); color: var(--c-text-faint); margin-top: 6px; }
+  .stat-card.success .num { color: var(--c-success); }
+  .stat-card.danger .num { color: var(--c-danger); }
+  .stat-card.warning .num { color: var(--c-warning); }
+  .stat-card.brand .num { color: var(--c-brand-700); }
+
+  .bar-row {
+    display: grid;
+    grid-template-columns: 120px 1fr 50px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: var(--text-sm);
+  }
+  .bar-row .name { color: var(--c-text-muted); }
+  .bar-row .bar {
+    height: 8px;
+    background: var(--c-surface-alt);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .bar-row .bar > div { height: 100%; background: var(--c-brand-700); border-radius: inherit; transition: width .3s ease; }
+  .bar-row.success .bar > div { background: var(--c-success); }
+  .bar-row.warning .bar > div { background: var(--c-warning); }
+  .bar-row.danger .bar > div { background: var(--c-danger); }
+  .bar-row .v { text-align: right; color: var(--c-text); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+
+  .top-cat {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--c-surface-alt);
+    font-size: var(--text-base);
+  }
+  .top-cat:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+<header id="app-nav"></header>
+
+<header class="page-header">
+  <div>
+    <div class="title">대시보드</div>
+    <div class="subtitle">콜센터 현황을 한눈에</div>
+  </div>
+  <div class="meta">
+    <a class="btn btn-secondary btn-sm hidden" id="export-btn" href="/api/export/conversations.csv" download>상담 CSV</a>
+    <button class="btn btn-secondary btn-sm" id="refresh-btn">새로고침</button>
+  </div>
+</header>
+
+<div class="page-container">
+  <!-- 상단 큰 숫자 카드 -->
+  <div class="grid" id="top-grid"></div>
+
+  <!-- 분포 카드들 -->
+  <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));">
+    <section class="card">
+      <div class="card-head"><div class="title">상태 분포</div></div>
+      <div class="card-body" id="status-dist"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><div class="title">감정 분포</div></div>
+      <div class="card-body" id="sentiment-dist"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><div class="title">상위 카테고리</div></div>
+      <div class="card-body" id="top-cats"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><div class="title">위험도</div></div>
+      <div class="card-body" id="risk-dist"></div>
+    </section>
+  </div>
+</div>
+
+<script src="/assets/ui.js"></script>
+<script src="/assets/nav.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function load() {
+  let d;
+  try {
+    d = await (await fetch("/api/dashboard")).json();
+  } catch (e) {
+    UI.toast("대시보드 데이터를 불러오지 못했습니다.", { type: "danger" });
+    return;
+  }
+
+  const cards = [
+    { label: "오늘 신규 상담", num: d.today.new_conversations, sub: `오늘 메시지 ${d.today.messages}건` },
+    { label: "내 담당 상담", num: d.me.assigned, sub: `미배정 대기 ${d.me.unassigned_queue}건`, cls: "brand" },
+    { label: "총 상담 수", num: d.totals.conversations, sub: `학습 ${d.totals.learned_items}건` },
+    { label: "활성 사용자", num: d.totals.active_users, sub: "콜센터 로그인 계정" },
+    { label: "고객 만족도", num: d.satisfaction.avg != null ? d.satisfaction.avg : "—",
+      sub: d.satisfaction.count ? `${d.satisfaction.count}건 평가` : "평가 없음",
+      cls: d.satisfaction.avg && d.satisfaction.avg >= 4 ? "success" : "" },
+  ];
+  $("top-grid").innerHTML = cards.map((c) => `
+    <div class="card stat-card ${c.cls || ''}">
+      <div class="card-body">
+        <div class="label">${UI.escapeHtml(c.label)}</div>
+        <div class="num">${UI.escapeHtml(String(c.num))}</div>
+        <div class="sub">${UI.escapeHtml(c.sub || '')}</div>
+      </div>
+    </div>`).join("");
+
+  const STATUS_LABELS = { open: "진행중", escalated: "에스컬레이션", closed: "종료" };
+  const STATUS_CLASS  = { open: "", escalated: "danger", closed: "success" };
+  $("status-dist").innerHTML = renderBars(d.by_status, STATUS_LABELS, STATUS_CLASS);
+
+  $("sentiment-dist").innerHTML = renderBars(d.by_sentiment);
+
+  const RISK_LABELS = { low: "낮음", medium: "보통", high: "높음" };
+  const RISK_CLASS = { low: "success", medium: "warning", high: "danger" };
+  $("risk-dist").innerHTML = renderBars(d.by_risk, RISK_LABELS, RISK_CLASS);
+
+  if (d.top_categories.length) {
+    $("top-cats").innerHTML = d.top_categories.map((c) =>
+      `<div class="top-cat"><span>${UI.escapeHtml(c.name)}</span><b>${c.count}</b></div>`
+    ).join("");
+  } else {
+    $("top-cats").innerHTML = `<p class="muted">아직 카테고리 분류 데이터가 없습니다.</p>`;
+  }
+}
+
+function renderBars(data, labels = {}, classes = {}) {
+  const entries = Object.entries(data || {});
+  const max = Math.max(1, ...entries.map(([, n]) => n));
+  if (!entries.length) return `<p class="muted">데이터 없음</p>`;
+  return entries
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, n]) => {
+      const label = labels[key] || key;
+      const cls = classes[key] || "";
+      const pct = Math.round((n / max) * 100);
+      return `<div class="bar-row ${cls}">
+        <span class="name">${UI.escapeHtml(label)}</span>
+        <div class="bar"><div style="width:${pct}%"></div></div>
+        <span class="v">${n}</span>
+      </div>`;
+    }).join("");
+}
+
+$("refresh-btn").addEventListener("click", load);
+document.addEventListener("auth-ready", (e) => {
+  const user = e.detail;
+  const perms = user?.permissions || [];
+  if (user && (user.role === "admin" || perms.includes("data.export"))) {
+    document.getElementById("export-btn").classList.remove("hidden");
+  }
+  load();
+});
+</script>
+</body>
+</html>

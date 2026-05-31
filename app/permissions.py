@@ -23,6 +23,9 @@ class P:
     PASSWORD_ASSIST = "password.assist"
     USER_MANAGE = "user.manage"
     PERMISSION_MANAGE = "permission.manage"
+    AUDIT_VIEW = "audit.view"
+    TEMPLATE_MANAGE = "template.manage"
+    DATA_EXPORT = "data.export"
 
 
 # 카탈로그: (key, 설명, 그룹). 그룹은 UI 정렬·묶기에 사용.
@@ -40,6 +43,9 @@ CATALOG: List[Tuple[str, str, str]] = [
     (P.PASSWORD_ASSIST,  "고객 비밀번호 재설정 지원",  "고객 지원"),
     (P.USER_MANAGE,      "콜센터 사용자 관리",         "관리"),
     (P.PERMISSION_MANAGE, "권한·역할 관리",            "관리"),
+    (P.AUDIT_VIEW,       "변경 이력(audit log) 조회", "관리"),
+    (P.TEMPLATE_MANAGE,  "답변 템플릿 관리",           "관리"),
+    (P.DATA_EXPORT,      "데이터 내보내기 (CSV)",      "관리"),
 ]
 
 ALL_PERMISSION_KEYS = {key for key, _, _ in CATALOG}

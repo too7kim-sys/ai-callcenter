@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import auth, permissions
+from .. import audit, auth, permissions
 from ..database import get_db
 from ..models import AgentUser, Role, RolePermission
 
@@ -72,7 +72,7 @@ def list_roles(
 def create_role(
     payload: RoleCreateRequest,
     db: Session = Depends(get_db),
-    _user=Depends(auth.require_permission(permissions.P.PERMISSION_MANAGE)),
+    user=Depends(auth.require_permission(permissions.P.PERMISSION_MANAGE)),
 ):
     name = payload.name.strip().lower()
     if not all(c.isalnum() or c in "._-" for c in name):
@@ -90,6 +90,8 @@ def create_role(
     db.commit()
     db.refresh(role)
     _set_permissions(db, role, payload.permissions)
+    audit.log(db, user, "role.create", target_type="role", target_id=role.id,
+              details={"name": role.name, "permissions": payload.permissions})
     return _serialize(role, permissions.permissions_of(db, role.name), 0)
 
 
@@ -98,7 +100,7 @@ def update_role(
     role_id: int,
     payload: RoleUpdateRequest,
     db: Session = Depends(get_db),
-    _user=Depends(auth.require_permission(permissions.P.PERMISSION_MANAGE)),
+    user=Depends(auth.require_permission(permissions.P.PERMISSION_MANAGE)),
 ):
     role = db.get(Role, role_id)
     if role is None:
@@ -110,6 +112,8 @@ def update_role(
             raise HTTPException(status_code=400, detail="admin 역할의 권한은 변경할 수 없습니다.")
         _set_permissions(db, role, payload.permissions)
     db.commit()
+    audit.log(db, user, "role.update", target_type="role", target_id=role.id,
+              details={"name": role.name})
     return _serialize(role, permissions.permissions_of(db, role.name), _user_count(db, role.name))
 
 
@@ -117,7 +121,7 @@ def update_role(
 def delete_role(
     role_id: int,
     db: Session = Depends(get_db),
-    _user=Depends(auth.require_permission(permissions.P.PERMISSION_MANAGE)),
+    user=Depends(auth.require_permission(permissions.P.PERMISSION_MANAGE)),
 ):
     role = db.get(Role, role_id)
     if role is None:
@@ -133,8 +137,11 @@ def delete_role(
     db.query(RolePermission).filter(RolePermission.role_id == role.id).delete(
         synchronize_session=False
     )
+    name = role.name
     db.delete(role)
     db.commit()
+    audit.log(db, user, "role.delete", target_type="role", target_id=role_id,
+              details={"name": name})
     return {"ok": True}
 
 

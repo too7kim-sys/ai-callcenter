@@ -7,11 +7,21 @@ import tempfile
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from .. import ai, auth, faq, knowledge, voice
+from .. import ai, audit, auth, faq, knowledge, voice
 from ..database import get_db
-from ..models import Conversation, KnowledgeItem, Message
+from ..models import AgentUser, Conversation, ConversationNote, KnowledgeItem, Message, ReplyTemplate
 from ..permissions import P
-from ..schemas import FaqCreate, FaqUpdate, KnowledgeItemUpdate, ReplyRequest, StatusRequest
+from ..schemas import (
+    AssignRequest,
+    FaqCreate,
+    FaqUpdate,
+    KnowledgeItemUpdate,
+    NoteCreate,
+    ReplyRequest,
+    StatusRequest,
+    TemplateCreate,
+    TemplateUpdate,
+)
 from ..service import (
     build_history,
     get_conversation_or_404,
@@ -26,14 +36,47 @@ _STATUSES = {"open", "escalated", "closed"}
 
 @router.get("/conversations")
 def list_conversations(
+    mine: bool = False,
+    unassigned: bool = False,
     db: Session = Depends(get_db),
-    _user=Depends(auth.require_permission(P.CONV_VIEW)),
+    user=Depends(auth.require_permission(P.CONV_VIEW)),
 ):
-    """전체 상담 목록 (최근 갱신 순)."""
-    conversations = (
-        db.query(Conversation).order_by(Conversation.updated_at.desc()).all()
-    )
-    return [serialize_conversation(c) for c in conversations]
+    """상담 목록.
+
+    쿼리 파라미터:
+      mine=true        — 내가 담당으로 배정된 것만
+      unassigned=true  — 미배정만 (긴급 처리 큐)
+    """
+    q = db.query(Conversation).order_by(Conversation.updated_at.desc())
+    if mine:
+        q = q.filter(Conversation.assigned_agent_id == user.id)
+    if unassigned:
+        q = q.filter(Conversation.assigned_agent_id.is_(None))
+    return [serialize_conversation(c, db=db) for c in q.all()]
+
+
+@router.post("/conversations/{conversation_id}/assign")
+def assign_conversation(
+    conversation_id: int,
+    payload: AssignRequest,
+    db: Session = Depends(get_db),
+    user=Depends(auth.require_permission(P.CONV_VIEW)),
+):
+    """상담을 특정 상담원에게 배정한다. user_id=null 이면 배정 해제."""
+    conv = get_conversation_or_404(db, conversation_id)
+    if payload.user_id is not None:
+        target = db.get(AgentUser, payload.user_id)
+        if target is None or not target.active:
+            raise HTTPException(status_code=404, detail="대상 상담원을 찾을 수 없습니다.")
+        conv.assigned_agent_id = target.id
+    else:
+        conv.assigned_agent_id = None
+    conv.updated_at = now()
+    db.commit()
+    audit.log(db, user, "conversation.assign",
+              target_type="conversation", target_id=conv.id,
+              details={"assigned_to": conv.assigned_agent_id})
+    return serialize_conversation(conv, include_messages=True, db=db)
 
 
 @router.post("/conversations/{conversation_id}/analyze")
@@ -219,7 +262,7 @@ _MIN_LEARNED_ANSWER_LEN = 20  # 너무 짧은 상담원 답변은 FAQ로 노출�
 def create_faq(
     payload: FaqCreate,
     db: Session = Depends(get_db),
-    _user=Depends(auth.require_permission(P.FAQ_MANAGE)),
+    user=Depends(auth.require_permission(P.FAQ_MANAGE)),
 ):
     """FAQ 항목 추가 (관리자)."""
     item = faq.create_entry(
@@ -229,6 +272,8 @@ def create_faq(
         answer=payload.answer,
         keywords=payload.keywords,
     )
+    audit.log(db, user, "faq.create", target_type="faq", target_id=item["id"],
+              details={"category": item["category"], "question": item["question"]})
     return {**item, "source": "curated"}
 
 
@@ -237,7 +282,7 @@ def update_faq(
     entry_id: int,
     payload: FaqUpdate,
     db: Session = Depends(get_db),
-    _user=Depends(auth.require_permission(P.FAQ_MANAGE)),
+    user=Depends(auth.require_permission(P.FAQ_MANAGE)),
 ):
     """FAQ 항목 수정 (관리자)."""
     item = faq.update_entry(
@@ -250,6 +295,7 @@ def update_faq(
     )
     if item is None:
         raise HTTPException(status_code=404, detail="FAQ 항목을 찾을 수 없습니다.")
+    audit.log(db, user, "faq.update", target_type="faq", target_id=entry_id)
     return {**item, "source": "curated"}
 
 
@@ -324,12 +370,247 @@ async def transcribe_voice(
 def delete_faq(
     entry_id: int,
     db: Session = Depends(get_db),
-    _user=Depends(auth.require_permission(P.FAQ_MANAGE)),
+    user=Depends(auth.require_permission(P.FAQ_MANAGE)),
 ):
     """FAQ 항목 삭제 (관리자)."""
     if not faq.delete_entry(db, entry_id):
         raise HTTPException(status_code=404, detail="FAQ 항목을 찾을 수 없습니다.")
+    audit.log(db, user, "faq.delete", target_type="faq", target_id=entry_id)
     return {"ok": True}
+
+
+# ====================================================================
+# 내부 메모 (상담원 전용)
+# ====================================================================
+
+@router.get("/conversations/{conversation_id}/notes")
+def list_notes(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.CONV_VIEW)),
+):
+    get_conversation_or_404(db, conversation_id)
+    rows = db.query(ConversationNote).filter(
+        ConversationNote.conversation_id == conversation_id
+    ).order_by(ConversationNote.id.desc()).all()
+    result = []
+    for n in rows:
+        author = db.get(AgentUser, n.author_id) if n.author_id else None
+        result.append({
+            "id": n.id,
+            "content": n.content,
+            "author_id": n.author_id,
+            "author_name": (author.name or author.username) if author else "(삭제됨)",
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+        })
+    return result
+
+
+@router.post("/conversations/{conversation_id}/notes")
+def create_note(
+    conversation_id: int,
+    payload: NoteCreate,
+    db: Session = Depends(get_db),
+    user=Depends(auth.require_permission(P.CONV_VIEW)),
+):
+    get_conversation_or_404(db, conversation_id)
+    n = ConversationNote(
+        conversation_id=conversation_id,
+        author_id=user.id,
+        content=payload.content.strip(),
+    )
+    db.add(n)
+    db.commit()
+    db.refresh(n)
+    return {
+        "id": n.id,
+        "content": n.content,
+        "author_id": n.author_id,
+        "author_name": user.name or user.username,
+        "created_at": n.created_at.isoformat() if n.created_at else None,
+    }
+
+
+@router.delete("/notes/{note_id}")
+def delete_note(
+    note_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(auth.require_permission(P.CONV_VIEW)),
+):
+    n = db.get(ConversationNote, note_id)
+    if n is None:
+        raise HTTPException(status_code=404, detail="메모를 찾을 수 없습니다.")
+    # 작성자 또는 관리자만 삭제 가능
+    if n.author_id != user.id and user.role != "admin":
+        raise HTTPException(status_code=403, detail="본인이 작성한 메모만 삭제할 수 있습니다.")
+    db.delete(n)
+    db.commit()
+    return {"ok": True}
+
+
+# ====================================================================
+# 답변 템플릿
+# ====================================================================
+
+@router.get("/templates")
+def list_templates(
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.CONV_REPLY)),
+):
+    rows = db.query(ReplyTemplate).order_by(ReplyTemplate.id).all()
+    return [
+        {"id": r.id, "title": r.title, "content": r.content, "category": r.category or ""}
+        for r in rows
+    ]
+
+
+@router.post("/templates")
+def create_template(
+    payload: TemplateCreate,
+    db: Session = Depends(get_db),
+    user=Depends(auth.require_permission(P.TEMPLATE_MANAGE)),
+):
+    row = ReplyTemplate(
+        title=payload.title.strip(),
+        content=payload.content.strip(),
+        category=(payload.category or "").strip() or None,
+        created_by=user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    audit.log(db, user, "template.create", target_type="template", target_id=row.id,
+              details={"title": row.title})
+    return {"id": row.id, "title": row.title, "content": row.content, "category": row.category or ""}
+
+
+@router.patch("/templates/{template_id}")
+def update_template(
+    template_id: int,
+    payload: TemplateUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(auth.require_permission(P.TEMPLATE_MANAGE)),
+):
+    row = db.get(ReplyTemplate, template_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없습니다.")
+    if payload.title is not None: row.title = payload.title.strip()
+    if payload.content is not None: row.content = payload.content.strip()
+    if payload.category is not None: row.category = payload.category.strip() or None
+    db.commit()
+    audit.log(db, user, "template.update", target_type="template", target_id=row.id)
+    return {"id": row.id, "title": row.title, "content": row.content, "category": row.category or ""}
+
+
+@router.delete("/templates/{template_id}")
+def delete_template(
+    template_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(auth.require_permission(P.TEMPLATE_MANAGE)),
+):
+    row = db.get(ReplyTemplate, template_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없습니다.")
+    db.delete(row)
+    db.commit()
+    audit.log(db, user, "template.delete", target_type="template", target_id=template_id)
+    return {"ok": True}
+
+
+# ====================================================================
+# 데이터 내보내기 (CSV)
+# ====================================================================
+
+def _csv_response(rows, fields, filename):
+    """리스트와 필드명으로 CSV 문자열 응답을 만든다."""
+    import csv
+    import io
+    from fastapi.responses import Response
+    buf = io.StringIO()
+    # BOM 으로 엑셀 한글 정상 표시
+    buf.write("﻿")
+    writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    for r in rows:
+        writer.writerow(r)
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/export/faq.csv")
+def export_faq(
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.DATA_EXPORT)),
+):
+    rows = [
+        {"id": f["id"], "category": f["category"], "question": f["question"],
+         "answer": f["answer"], "keywords": ", ".join(f.get("keywords", []))}
+        for f in faq.FAQS
+    ]
+    return _csv_response(rows, ["id", "category", "question", "answer", "keywords"], "faq.csv")
+
+
+@router.get("/export/users.csv")
+def export_users(
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.DATA_EXPORT)),
+):
+    rows = []
+    for u in db.query(AgentUser).order_by(AgentUser.id).all():
+        rows.append({
+            "id": u.id, "username": u.username, "name": u.name,
+            "email": u.email or "", "role": u.role,
+            "active": "Y" if u.active else "N",
+            "last_login_at": u.last_login_at.isoformat() if u.last_login_at else "",
+            "created_at": u.created_at.isoformat() if u.created_at else "",
+        })
+    return _csv_response(rows, ["id", "username", "name", "email", "role", "active",
+                                 "last_login_at", "created_at"], "users.csv")
+
+
+@router.get("/export/knowledge.csv")
+def export_knowledge(
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.DATA_EXPORT)),
+):
+    rows = []
+    for it in db.query(KnowledgeItem).order_by(KnowledgeItem.id).all():
+        rows.append({
+            "id": f"L{it.id}", "conversation_id": it.conversation_id,
+            "question": it.question, "answer": it.answer,
+            "has_embedding": "Y" if it.embedding else "N",
+            "created_at": it.created_at.isoformat() if it.created_at else "",
+        })
+    return _csv_response(rows, ["id", "conversation_id", "question", "answer",
+                                 "has_embedding", "created_at"], "knowledge.csv")
+
+
+@router.get("/export/conversations.csv")
+def export_conversations(
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.DATA_EXPORT)),
+):
+    rows = []
+    for c in db.query(Conversation).order_by(Conversation.id).all():
+        agent_name = ""
+        if c.assigned_agent_id:
+            a = db.get(AgentUser, c.assigned_agent_id)
+            if a: agent_name = a.name or a.username
+        rows.append({
+            "id": c.id, "customer_name": c.customer_name, "status": c.status,
+            "category": c.category or "", "sentiment": c.sentiment or "",
+            "risk_level": c.risk_level or "", "message_count": len(c.messages),
+            "assigned_agent": agent_name,
+            "customer_rating": c.customer_rating or "",
+            "created_at": c.created_at.isoformat() if c.created_at else "",
+            "updated_at": c.updated_at.isoformat() if c.updated_at else "",
+        })
+    return _csv_response(rows, ["id", "customer_name", "status", "category", "sentiment",
+                                 "risk_level", "message_count", "assigned_agent",
+                                 "customer_rating", "created_at", "updated_at"], "conversations.csv")
 
 
 @router.get("/faq")

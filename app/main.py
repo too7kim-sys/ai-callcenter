@@ -9,7 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from . import accounts, ai, auth, config, faq
 from .database import Base, engine
 from .routers import agent, chat, password
+from .routers import audit as audit_router
 from .routers import auth as auth_router
+from .routers import dashboard as dashboard_router
 from .routers import roles as roles_router
 from .routers import users as users_router
 
@@ -28,6 +30,8 @@ app.include_router(password.router)
 app.include_router(auth_router.router)
 app.include_router(users_router.router)
 app.include_router(roles_router.router)
+app.include_router(dashboard_router.router)
+app.include_router(audit_router.router)
 
 STATIC_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static"
@@ -95,3 +99,21 @@ def users_page():
 def permissions_page():
     """역할·권한 관리 화면 (관리자 전용)."""
     return FileResponse(os.path.join(STATIC_DIR, "permissions.html"))
+
+
+@app.get("/dashboard")
+def dashboard_page():
+    """대시보드 화면."""
+    return FileResponse(os.path.join(STATIC_DIR, "dashboard.html"))
+
+
+@app.get("/audit")
+def audit_page():
+    """변경 이력 화면 (관리자 전용)."""
+    return FileResponse(os.path.join(STATIC_DIR, "audit.html"))
+
+
+@app.get("/templates")
+def templates_page():
+    """답변 템플릿 관리 화면."""
+    return FileResponse(os.path.join(STATIC_DIR, "templates.html"))

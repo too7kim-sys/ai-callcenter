@@ -123,6 +123,54 @@
   .start button { padding: 12px; width: 100%; }
   .hint { font-size: 11px; color: #94a3b8; text-align: center; padding: 8px; }
   .typing .bubble { color: #94a3b8; font-style: italic; }
+  /* 영업시간 배너 / 메시지 피드백 / 액션 버튼 */
+  .biz-banner {
+    background: #fef3c7;
+    color: #92400e;
+    border-bottom: 1px solid #fde68a;
+    padding: 8px 14px;
+    font-size: 12px;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .ai .feedback, .agent .feedback {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    margin-left: 4px;
+  }
+  .fb-btn {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 11px;
+    cursor: pointer;
+    color: #64748b;
+    transition: background .15s;
+  }
+  .fb-btn:hover { background: #f1f5f9; }
+  .fb-btn.active.up { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+  .fb-btn.active.down { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+  .quick-actions {
+    display: flex;
+    gap: 6px;
+    padding: 6px 12px 0;
+    border-top: 1px solid #f1f5f9;
+    background: #fff;
+  }
+  .quick-actions .qa-btn {
+    background: #f1f5f9;
+    border: none;
+    color: #475569;
+    border-radius: 999px;
+    padding: 5px 11px;
+    font-size: 11.5px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .quick-actions .qa-btn:hover { background: #e2e8f0; }
+  .quick-actions .qa-btn.danger { color: #b91c1c; }
   .icon-btn {
     background: #fff;
     border: 1px solid #cbd5e1;
@@ -163,6 +211,43 @@
   @media (max-width: 480px) {
     .chat { height: 100vh; max-height: 100vh; border-radius: 0; }
   }
+  /* 상담 종료 만족도 모달 */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(15, 23, 42, .55);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .modal {
+    background: #fff;
+    border-radius: 14px;
+    padding: 22px;
+    width: 360px; max-width: 92%;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, .35);
+  }
+  .modal h3 { font-size: 16px; margin-bottom: 6px; color: #0f172a; }
+  .modal p { font-size: 13px; color: #64748b; margin-bottom: 14px; line-height: 1.5; }
+  .stars { display: flex; gap: 4px; justify-content: center; margin: 8px 0 16px; }
+  .stars button {
+    background: none; border: none; cursor: pointer;
+    font-size: 30px; color: #cbd5e1; padding: 0;
+    transition: color .15s;
+  }
+  .stars button.on, .stars button:hover { color: #f59e0b; }
+  .modal textarea {
+    width: 100%; min-height: 70px;
+    border: 1px solid #cbd5e1; border-radius: 8px;
+    padding: 9px; font-size: 13px; font-family: inherit;
+    resize: vertical; outline: none;
+  }
+  .modal textarea:focus { border-color: #1d4ed8; }
+  .modal-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .modal-actions button {
+    flex: 1; border-radius: 8px; padding: 10px;
+    font-size: 13px; font-weight: 600; cursor: pointer; border: none;
+  }
+  .modal-actions .btn-cancel { background: #f1f5f9; color: #475569; }
+  .modal-actions .btn-ok { background: #1d4ed8; color: #fff; }
 </style>
 </head>
 <body>
@@ -190,7 +275,12 @@
     <button id="start-btn">상담 시작하기</button>
   </div>
 
+  <div class="biz-banner" id="biz-banner" style="display:none"></div>
   <div class="messages" id="messages" style="display:none"></div>
+  <div class="quick-actions" id="quick-actions" style="display:none">
+    <button class="qa-btn" id="qa-agent">🙋 상담원 연결</button>
+    <button class="qa-btn danger" id="qa-end">상담 종료</button>
+  </div>
   <div class="composer" id="composer" style="display:none">
     <button class="icon-btn" id="mic-btn" title="음성으로 말하기" aria-label="음성으로 말하기">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -232,6 +322,19 @@ async function loadConfig() {
   }
 }
 
+async function loadBusinessStatus() {
+  try {
+    const res = await fetch(API + "/api/business-status");
+    if (!res.ok) return;
+    const s = await res.json();
+    if (!s.active && s.message) {
+      const b = $("biz-banner");
+      b.textContent = s.message;
+      b.style.display = "block";
+    }
+  } catch (e) { /* 무시 */ }
+}
+
 const WHO = { ai: "AI 상담봇", agent: "상담원", customer: "" };
 
 function appendMessage(msg) {
@@ -240,12 +343,47 @@ function appendMessage(msg) {
   const row = document.createElement("div");
   row.className = "row " + msg.role;
   const label = WHO[msg.role];
+  let fbHtml = "";
+  if (msg.role === "ai" || msg.role === "agent") {
+    const upActive = msg.feedback === "up" ? "active up" : "";
+    const downActive = msg.feedback === "down" ? "active down" : "";
+    fbHtml = `<div class="feedback">
+      <button class="fb-btn ${upActive}" data-fb="up" data-msg="${msg.id}">👍</button>
+      <button class="fb-btn ${downActive}" data-fb="down" data-msg="${msg.id}">👎</button>
+    </div>`;
+  }
   row.innerHTML =
     (label ? `<div class="who">${label}</div>` : "") +
-    `<div class="bubble">${escapeHtml(msg.content)}</div>`;
+    `<div class="bubble">${escapeHtml(msg.content)}</div>` +
+    fbHtml;
+  row.querySelectorAll("[data-fb]").forEach((b) => {
+    b.addEventListener("click", () => sendFeedback(parseInt(b.dataset.msg, 10), b.dataset.fb));
+  });
   $("messages").appendChild(row);
   scrollDown();
   if (msg.role === "ai" || msg.role === "agent") speak(msg.content);
+}
+
+async function sendFeedback(messageId, value) {
+  try {
+    const cur = document.querySelector(`[data-msg="${messageId}"][data-fb="${value}"]`);
+    const isActive = cur && cur.classList.contains("active");
+    const newValue = isActive ? "" : value;
+    const res = await fetch(`/api/messages/${messageId}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: newValue }),
+    });
+    if (!res.ok) throw new Error("실패");
+    // 토글 UI
+    document.querySelectorAll(`[data-msg="${messageId}"]`).forEach((b) => {
+      b.classList.remove("active", "up", "down");
+    });
+    if (newValue) {
+      const sel = document.querySelector(`[data-msg="${messageId}"][data-fb="${newValue}"]`);
+      if (sel) sel.classList.add("active", newValue);
+    }
+  } catch (e) { /* 무시 */ }
 }
 
 function scrollDown() {
@@ -294,6 +432,7 @@ async function startChat() {
   $("start-view").style.display = "none";
   $("messages").style.display = "flex";
   $("composer").style.display = "flex";
+  $("quick-actions").style.display = "flex";
   $("hint").style.display = "block";
 
   const greet = document.createElement("div");
@@ -445,15 +584,86 @@ function setupVoice() {
   };
 }
 
+// ===== 상담원 연결 / 상담 종료 =====
+async function requestAgent() {
+  if (!conversationId) return;
+  try {
+    const res = await fetch(API + `/api/conversations/${conversationId}/agent-request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) throw new Error("실패");
+    showNotice("상담원에게 연결 요청을 보냈습니다. 잠시만 기다려 주세요.");
+    $("qa-agent").disabled = true;
+    $("qa-agent").style.opacity = ".5";
+  } catch (e) {
+    showNotice("연결 요청 중 오류가 발생했습니다.");
+  }
+}
+
+function openEndModal() {
+  if (!conversationId) return;
+  let rating = 0;
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3>상담을 종료하시겠습니까?</h3>
+      <p>오늘의 상담은 어떠셨나요? 평가를 남겨주시면 더 나은 서비스로 보답하겠습니다.</p>
+      <div class="stars" id="end-stars">
+        ${[1,2,3,4,5].map((n) => `<button data-r="${n}" aria-label="${n}점">★</button>`).join("")}
+      </div>
+      <textarea id="end-feedback" placeholder="개선 의견을 자유롭게 남겨주세요 (선택)" maxlength="500"></textarea>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="end-cancel">취소</button>
+        <button class="btn-ok" id="end-ok">상담 종료</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  const stars = backdrop.querySelectorAll("#end-stars button");
+  stars.forEach((s) => {
+    s.addEventListener("click", () => {
+      rating = parseInt(s.dataset.r, 10);
+      stars.forEach((b) => b.classList.toggle("on", parseInt(b.dataset.r, 10) <= rating));
+    });
+  });
+  const close = () => backdrop.remove();
+  backdrop.querySelector("#end-cancel").addEventListener("click", close);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  backdrop.querySelector("#end-ok").addEventListener("click", async () => {
+    const fb = backdrop.querySelector("#end-feedback").value.trim();
+    try {
+      const res = await fetch(API + `/api/conversations/${conversationId}/end`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating: rating || null, feedback: fb || null }),
+      });
+      if (!res.ok) throw new Error("실패");
+      close();
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      $("composer").style.display = "none";
+      $("quick-actions").style.display = "none";
+      $("hint").textContent = "상담이 종료되었습니다. 이용해 주셔서 감사합니다.";
+      showNotice("상담이 종료되었습니다. 평가를 남겨 주셔서 감사합니다.");
+    } catch (e) {
+      showNotice("종료 처리 중 오류가 발생했습니다.");
+    }
+  });
+}
+
 $("start-btn").addEventListener("click", startChat);
 $("name-input").addEventListener("keydown", (e) => { if (e.key === "Enter") startChat(); });
 $("send-btn").addEventListener("click", sendMessage);
 $("msg-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendMessage(); });
 $("mic-btn").addEventListener("click", toggleMic);
 $("tts-btn").addEventListener("click", toggleTts);
+$("qa-agent").addEventListener("click", requestAgent);
+$("qa-end").addEventListener("click", openEndModal);
 
 setupVoice();
 loadConfig();
+loadBusinessStatus();
 </script>
 </body>
 </html>

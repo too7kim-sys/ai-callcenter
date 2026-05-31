@@ -101,6 +101,7 @@
   </div>
   <div class="meta">
     <span class="chip chip-brand" id="count">·</span>
+    <a class="btn btn-secondary btn-sm hidden" id="export-btn" href="/api/export/faq.csv" download>CSV</a>
     <button class="btn btn-secondary btn-sm hidden" id="voice-btn">🎙 음성 파일 학습</button>
     <button class="btn btn-primary btn-sm hidden" id="add-btn">+ FAQ 추가</button>
   </div>
@@ -463,6 +464,9 @@ document.addEventListener("auth-ready", (e) => {
   if (canManageFaq) $("add-btn").classList.remove("hidden");
   if (user && (user.role === "admin" || perms.includes("voice.upload"))) {
     $("voice-btn").classList.remove("hidden");
+  }
+  if (user && (user.role === "admin" || perms.includes("data.export"))) {
+    $("export-btn").classList.remove("hidden");
   }
   init();
 });

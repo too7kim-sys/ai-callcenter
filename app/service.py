@@ -46,11 +46,12 @@ def serialize_message(message):
         "content": message.content,
         "sentiment": message.sentiment,
         "sentiment_score": message.sentiment_score,
+        "feedback": getattr(message, "feedback", None),
         "created_at": _iso(message.created_at),
     }
 
 
-def serialize_conversation(conv, include_messages=False):
+def serialize_conversation(conv, include_messages=False, db=None):
     messages = list(conv.messages)
     data = {
         "id": conv.id,
@@ -64,11 +65,22 @@ def serialize_conversation(conv, include_messages=False):
         "sentiment": conv.sentiment,
         "sentiment_score": conv.sentiment_score,
         "risk_level": conv.risk_level,
+        "assigned_agent_id": getattr(conv, "assigned_agent_id", None),
+        "assigned_agent_name": None,
+        "agent_requested": bool(getattr(conv, "agent_requested", False)),
+        "customer_rating": getattr(conv, "customer_rating", None),
+        "customer_feedback": getattr(conv, "customer_feedback", None),
         "created_at": _iso(conv.created_at),
         "updated_at": _iso(conv.updated_at),
         "message_count": len(messages),
         "last_message": messages[-1].content if messages else None,
     }
+    # 배정 상담원 이름 조회 (있을 때만)
+    if db is not None and data["assigned_agent_id"]:
+        from .models import AgentUser
+        u = db.get(AgentUser, data["assigned_agent_id"])
+        if u:
+            data["assigned_agent_name"] = u.name or u.username
     if include_messages:
         data["messages"] = [serialize_message(m) for m in messages]
     return data

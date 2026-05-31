@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>변경 이력 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/ui.css" />
+<link rel="stylesheet" href="/assets/nav.css" />
+<style>
+  .action-cell { font-family: var(--font-mono); font-size: 12px; color: var(--c-info); }
+  .target-cell { font-size: 12px; color: var(--c-text-muted); }
+  .details-cell { font-size: 11.5px; color: var(--c-text-faint); font-family: var(--font-mono); max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+  .filter-input { width: 240px; }
+</style>
+</head>
+<body>
+<header id="app-nav"></header>
+
+<header class="page-header">
+  <div>
+    <div class="title">변경 이력</div>
+    <div class="subtitle">관리자 행위 audit log — 최근 순</div>
+  </div>
+  <div class="meta">
+    <input class="input filter-input" id="filter" placeholder="action / actor / target 필터" />
+  </div>
+</header>
+
+<div class="page-container">
+  <section class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th style="width:60px">ID</th>
+          <th style="width:140px">시각</th>
+          <th style="width:110px">행위자</th>
+          <th style="width:170px">동작</th>
+          <th>대상</th>
+          <th>세부</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+</div>
+
+<script src="/assets/ui.js"></script>
+<script src="/assets/nav.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let all = [];
+let filterText = "";
+
+function fmt(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch (e) { return iso; }
+}
+
+async function load() {
+  try {
+    all = await (await fetch("/api/audit?limit=500")).json();
+    render();
+  } catch (e) {
+    $("rows").innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:20px">변경 이력을 불러올 수 없습니다.</td></tr>`;
+  }
+}
+
+function render() {
+  const f = filterText.trim().toLowerCase();
+  const rows = !f ? all : all.filter((r) =>
+    (r.action || "").toLowerCase().includes(f) ||
+    (r.actor || "").toLowerCase().includes(f) ||
+    (r.target_type || "").toLowerCase().includes(f) ||
+    String(r.target_id || "").includes(f));
+
+  if (!rows.length) {
+    $("rows").innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:20px">${all.length ? "검색 결과 없음" : "기록된 변경 이력이 없습니다."}</td></tr>`;
+    return;
+  }
+  $("rows").innerHTML = rows.map((r) => {
+    const target = r.target_type ? `${UI.escapeHtml(r.target_type)} #${UI.escapeHtml(String(r.target_id || ""))}` : "—";
+    const details = r.details ? UI.escapeHtml(typeof r.details === "string" ? r.details : JSON.stringify(r.details)) : "";
+    return `<tr>
+      <td class="muted">${r.id}</td>
+      <td class="muted">${UI.escapeHtml(fmt(r.created_at))}</td>
+      <td><b>${UI.escapeHtml(r.actor)}</b></td>
+      <td class="action-cell">${UI.escapeHtml(r.action)}</td>
+      <td class="target-cell">${target}</td>
+      <td class="details-cell" title="${details}">${details}</td>
+    </tr>`;
+  }).join("");
+}
+
+$("filter").addEventListener("input", (e) => { filterText = e.target.value; render(); });
+document.addEventListener("auth-ready", load);
+</script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import auth, permissions, security
+from .. import audit, auth, permissions, security
 from ..database import get_db
 from ..models import AgentUser, Role
 from ..schemas import AdminResetRequest, UserCreateRequest, UserUpdateRequest
@@ -55,6 +55,8 @@ def create_user(
     db.add(user)
     db.commit()
     db.refresh(user)
+    audit.log(db, _user, "user.create", target_type="user", target_id=user.id,
+              details={"username": user.username, "role": user.role})
     return _serialize(user)
 
 
@@ -91,6 +93,8 @@ def update_user(
         user.failed_login_count = 0
     db.commit()
     db.refresh(user)
+    audit.log(db, acting_user, "user.update", target_type="user", target_id=user.id,
+              details=payload.model_dump(exclude_none=True))
     return _serialize(user)
 
 
@@ -109,6 +113,7 @@ def admin_reset_password(
     user.locked_until = None
     db.commit()
     auth.delete_user_sessions(db, user.id)
+    audit.log(db, _user, "user.reset_password", target_type="user", target_id=user.id)
     return {"ok": True, "message": "비밀번호를 초기화했습니다. 사용자에게 새 비밀번호를 전달해 주세요."}
 
 
@@ -124,6 +129,9 @@ def delete_user(
     if user is None:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
     auth.delete_user_sessions(db, user.id)
+    deleted_username = user.username
     db.delete(user)
     db.commit()
+    audit.log(db, acting_user, "user.delete", target_type="user", target_id=user_id,
+              details={"username": deleted_username})
     return {"ok": True}

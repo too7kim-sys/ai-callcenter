@@ -71,6 +71,7 @@
   </div>
   <div class="meta">
     <span class="chip chip-brand" id="count-chip">·</span>
+    <a class="btn btn-secondary btn-sm hidden" id="export-btn" href="/api/export/knowledge.csv" download>CSV</a>
   </div>
 </header>
 
@@ -247,7 +248,14 @@ $("search").addEventListener("input", (e) => {
   render();
 });
 
-document.addEventListener("auth-ready", init);
+document.addEventListener("auth-ready", (e) => {
+  const user = e.detail;
+  const perms = user?.permissions || [];
+  if (user && (user.role === "admin" || perms.includes("data.export"))) {
+    document.getElementById("export-btn").classList.remove("hidden");
+  }
+  init();
+});
 </script>
 </body>
 </html>

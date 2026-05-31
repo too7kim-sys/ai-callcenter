@@ -37,6 +37,39 @@ class FaqUpdate(BaseModel):
     keywords: list[str] | None = None
 
 
+class AssignRequest(BaseModel):
+    user_id: int | None = None  # None = 배정 해제
+
+
+class TemplateCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    content: str = Field(min_length=1, max_length=2000)
+    category: str = Field(default="", max_length=64)
+
+
+class TemplateUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=100)
+    content: str | None = Field(default=None, min_length=1, max_length=2000)
+    category: str | None = Field(default=None, max_length=64)
+
+
+class NoteCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class FeedbackRequest(BaseModel):
+    value: str  # "up" / "down" / "" (해제)
+
+
+class CustomerEndRequest(BaseModel):
+    rating: int | None = Field(default=None, ge=1, le=5)
+    feedback: str = Field(default="", max_length=1000)
+
+
+class AgentRequestBody(BaseModel):
+    note: str = Field(default="", max_length=500)
+
+
 class PasswordQuery(BaseModel):
     query: str = Field(min_length=1, max_length=200)  # 이메일 또는 아이디
 

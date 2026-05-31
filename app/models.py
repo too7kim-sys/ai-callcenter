@@ -30,6 +30,12 @@ class Conversation(Base):
     sentiment_score = Column(Float, nullable=True)
     risk_level = Column(String, nullable=True)  # low / medium / high
 
+    # 상담원 배정 / 고객 요청 / 만족도
+    assigned_agent_id = Column(Integer, ForeignKey("agent_users.id"), nullable=True, index=True)
+    agent_requested = Column(Boolean, default=False)  # 고객이 명시적 상담원 연결 요청
+    customer_rating = Column(Integer, nullable=True)  # 1~5
+    customer_feedback = Column(Text, nullable=True)
+
     created_at = Column(DateTime, default=_now)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 
@@ -53,9 +59,53 @@ class Message(Base):
     sentiment = Column(String, nullable=True)
     sentiment_score = Column(Float, nullable=True)
 
+    # 고객의 메시지 평가 (AI·상담원 답변에만 의미 있음): up / down / null
+    feedback = Column(String, nullable=True)
+
     created_at = Column(DateTime, default=_now)
 
     conversation = relationship("Conversation", back_populates="messages")
+
+
+class ReplyTemplate(Base):
+    """상담원이 자주 쓰는 답변 템플릿."""
+
+    __tablename__ = "reply_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String)
+    content = Column(Text)
+    category = Column(String, nullable=True)
+    created_by = Column(Integer, ForeignKey("agent_users.id"), nullable=True)
+    created_at = Column(DateTime, default=_now)
+    updated_at = Column(DateTime, default=_now, onupdate=_now)
+
+
+class ConversationNote(Base):
+    """상담원만 보는 내부 메모 (고객에게는 노출 안 함)."""
+
+    __tablename__ = "conversation_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), index=True)
+    author_id = Column(Integer, ForeignKey("agent_users.id"), nullable=True)
+    content = Column(Text)
+    created_at = Column(DateTime, default=_now)
+
+
+class AuditLog(Base):
+    """관리자 행위 변경 이력."""
+
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    actor_id = Column(Integer, ForeignKey("agent_users.id"), nullable=True, index=True)
+    actor_name = Column(String, nullable=True)  # 비정규화 — 사용자 삭제 후에도 보존
+    action = Column(String, index=True)         # 예: user.create, faq.delete, role.update
+    target_type = Column(String, nullable=True) # user / faq / role / conversation / ...
+    target_id = Column(String, nullable=True)   # 문자열 (학습 항목은 'L1' 등)
+    details = Column(Text, nullable=True)       # JSON 문자열 (자유 메타데이터)
+    created_at = Column(DateTime, default=_now, index=True)
 
 
 class KnowledgeItem(Base):
