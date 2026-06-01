@@ -331,6 +331,7 @@ async function voiceLearn() {
   backdrop.innerHTML = `
     <div class="modal modal-wide">
       <div class="modal-head">
+        <button class="modal-close" id="vclose-x" type="button" aria-label="닫기">×</button>
         <div class="title">음성 파일 학습</div>
         <div class="desc">통화 녹취 파일을 업로드하면 STT 변환 후 AI 가 FAQ 후보를 제안합니다.</div>
       </div>
@@ -377,13 +378,18 @@ async function voiceLearn() {
   document.body.appendChild(backdrop);
   requestAnimationFrame(() => backdrop.classList.add("open"));
 
+  let closed = false;
   function close() {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener("keydown", esc);
     backdrop.classList.remove("open");
     setTimeout(() => backdrop.remove(), 200);
   }
-  document.getElementById("vclose").addEventListener("click", close);
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
   const esc = (e) => { if (e.key === "Escape") close(); };
+  backdrop.querySelector("#vclose").addEventListener("click", close);
+  backdrop.querySelector("#vclose-x").addEventListener("click", close);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
   document.addEventListener("keydown", esc);
 
   const save = document.getElementById("vsave");

@@ -438,6 +438,7 @@ button { font-family: inherit; }
   max-height: 85vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   transform: translateY(8px) scale(.98);
   opacity: 0;
   transition: transform var(--transition-base), opacity var(--transition-base);
@@ -463,13 +464,38 @@ button { font-family: inherit; }
 .modal-body {
   padding: var(--space-3) var(--space-6) var(--space-4);
   overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .modal-foot {
   padding: var(--space-4) var(--space-6) var(--space-5);
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
+  flex-shrink: 0;
+  border-top: 1px solid var(--c-border);
+  background: var(--c-surface);
 }
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--c-text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.modal-close:hover { background: var(--c-surface-alt); color: var(--c-text); }
+.modal-head { position: relative; }
 .modal-wide { max-width: 620px; }
 
 /* ===================================================================
