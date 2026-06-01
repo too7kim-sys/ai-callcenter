@@ -16,8 +16,46 @@ from .routers import roles as roles_router
 from .routers import users as users_router
 
 logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("ai_callcenter.main")
+
+
+def _ensure_columns():
+    """기존 DB(이전 버전)에 새로 추가된 컬럼이 없을 때만 ALTER TABLE 로 보강.
+
+    SQLAlchemy `create_all` 은 누락된 테이블만 생성하고 기존 테이블에 컬럼은
+    추가하지 않으므로, 모델에 신규 컬럼이 추가되면 기존 DB는 호환되지 않는다.
+    여기서는 SQLite 기준으로 가벼운 마이그레이션을 수행한다.
+    """
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    expected = {
+        "conversations": [
+            ("assigned_agent_id", "INTEGER"),
+            ("agent_requested", "BOOLEAN DEFAULT 0"),
+            ("customer_rating", "INTEGER"),
+            ("customer_feedback", "TEXT"),
+        ],
+        "messages": [
+            ("feedback", "VARCHAR"),
+        ],
+    }
+    for table, cols in expected.items():
+        if table not in insp.get_table_names():
+            continue
+        existing = {c["name"] for c in insp.get_columns(table)}
+        for name, ddl in cols:
+            if name in existing:
+                continue
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+                log.info("마이그레이션: %s.%s 컬럼 추가", table, name)
+            except Exception as e:  # 다른 DB 엔진 / 이미 추가됨 등
+                log.warning("마이그레이션 실패 (%s.%s): %s", table, name, e)
+
 
 Base.metadata.create_all(bind=engine)
+_ensure_columns()
 auth.seed_roles()      # 시스템 역할(admin, agent)
 accounts.seed_accounts()
 auth.seed_admin()
