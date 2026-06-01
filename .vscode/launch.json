@@ -1,6 +1,29 @@
 {
+  // VSCode/Cursor 디버그 설정. 활성 Python 인터프리터(우측 하단 상태바에서 선택)를
+  // 사용해 FastAPI 서버를 실행한다.
+  //
+  // 사전 준비:
+  //   1) Ctrl/Cmd + Shift + P → "Python: Select Interpreter" → 프로젝트의 .venv 선택
+  //      (Windows: .venv\Scripts\python.exe, macOS/Linux: .venv/bin/python)
+  //   2) F5 (또는 Run and Debug 패널의 ▷ 버튼)
+  //
+  // 만약 "configured debug type 'debugpy' is not supported" 오류가 보이면
+  //   → 확장 'Python Debugger (ms-python.debugpy)' 를 설치해야 합니다.
   "version": "0.2.0",
   "configurations": [
+    {
+      "name": "FastAPI: 실행 (자동 reload)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true,
+      "python": "${command:python.interpreterPath}",
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
     {
       "name": "FastAPI: 디버그 (브레이크포인트)",
       "type": "debugpy",
@@ -13,15 +36,11 @@
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "justMyCode": false
-    },
-    {
-      "name": "FastAPI: 실행 (자동 reload)",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/run.py",
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}"
+      "justMyCode": false,
+      "python": "${command:python.interpreterPath}",
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
     }
   ]
 }

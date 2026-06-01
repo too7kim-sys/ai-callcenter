@@ -1,0 +1,12 @@
+{
+  // 워크스페이스 기본 Python 인터프리터.
+  // VSCode 가 자동으로 .venv 를 선택하도록 후보 경로를 등록한다.
+  // (실제 경로는 OS 에 따라 자동 해석됨)
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "python.terminal.activateEnvironment": true,
+  "python.analysis.extraPaths": ["${workspaceFolder}"],
+
+  // F5 후 디버그 콘솔 대신 통합 터미널을 활성 패널로
+  "debug.internalConsoleOptions": "neverOpen",
+  "debug.openDebug": "openOnDebugBreak"
+}
