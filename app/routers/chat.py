@@ -1,4 +1,6 @@
 """고객 채팅 API: 상담 생성, AI 챗봇 응답, 상담 조회."""
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -133,37 +135,42 @@ def end_conversation(
 
 
 @router.post("/conversations/{conversation_id}/chat")
-def chat(conversation_id: int, payload: ChatRequest, db: Session = Depends(get_db)):
-    """고객 메시지 수신 → 감정 분석 → AI 챗봇 자동 응답."""
+async def chat(conversation_id: int, payload: ChatRequest, db: Session = Depends(get_db)):
+    """고객 메시지 수신 → (감정 분석 ∥ 학습검색+AI 답변) 병렬 → 저장.
+
+    감정 분석과 답변 생성은 서로 독립이므로 병렬 실행해 체감 지연을
+    절반 수준으로 줄인다 (원격 Ollama 기준 ~6초 → ~3초).
+    """
     conv = get_conversation_or_404(db, conversation_id)
     message = payload.message.strip()
 
-    # 1) 고객 메시지 저장 + 감정 분석
-    sentiment = ai.analyze_sentiment(message)
-    customer_msg = Message(
+    # 답변 생성용 history 는 '이번 고객 메시지를 포함'해야 한다.
+    history = build_history(conv) + [{"role": "customer", "content": message}]
+
+    def _reply_pipeline():
+        past_cases = knowledge.retrieve(db, message, limit=3)
+        return ai.generate_reply(history, past_cases=past_cases)
+
+    # 1) 두 AI 호출을 동시에 실행
+    sentiment, reply = await asyncio.gather(
+        asyncio.to_thread(ai.analyze_sentiment, message),
+        asyncio.to_thread(_reply_pipeline),
+    )
+
+    # 2) 고객 메시지 + AI 답변 저장 (1회 commit 으로 줄임)
+    db.add(Message(
         conversation_id=conv.id,
         role="customer",
         content=message,
         sentiment=sentiment["sentiment"],
         sentiment_score=sentiment["score"],
-    )
-    db.add(customer_msg)
-
-    # 2) 상담 단위 감정 상태 갱신 + 위험 상담 에스컬레이션
+    ))
+    db.add(Message(conversation_id=conv.id, role="ai", content=reply["reply"]))
     conv.sentiment = sentiment["sentiment"]
     conv.sentiment_score = sentiment["score"]
     conv.risk_level = sentiment["risk_level"]
     if sentiment["risk_level"] == "high" and conv.status != "closed":
         conv.status = "escalated"
-    conv.updated_at = now()
-    db.commit()
-    db.refresh(conv)
-
-    # 3) 학습된 과거 상담 사례 검색 후 AI 챗봇 멀티턴 응답 생성
-    past_cases = knowledge.retrieve(db, message, limit=3)
-    reply = ai.generate_reply(build_history(conv), past_cases=past_cases)
-    ai_msg = Message(conversation_id=conv.id, role="ai", content=reply["reply"])
-    db.add(ai_msg)
     conv.updated_at = now()
     db.commit()
     db.refresh(conv)

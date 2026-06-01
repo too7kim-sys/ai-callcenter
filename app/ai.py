@@ -190,7 +190,7 @@ def analyze_sentiment(text):
                 provider,
                 SYSTEM_SENTIMENT,
                 [{"role": "user", "content": text}],
-                max_tokens=400,
+                max_tokens=120,
                 want_json=True,
             )
             return _normalize_sentiment(_extract_json(raw), source=provider)
