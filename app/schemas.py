@@ -63,7 +63,7 @@ class FeedbackRequest(BaseModel):
 
 class CustomerEndRequest(BaseModel):
     rating: int | None = Field(default=None, ge=1, le=5)
-    feedback: str = Field(default="", max_length=1000)
+    feedback: str | None = Field(default=None, max_length=1000)
 
 
 class AgentRequestBody(BaseModel):

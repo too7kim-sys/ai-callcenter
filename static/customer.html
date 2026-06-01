@@ -632,14 +632,23 @@ function openEndModal() {
   backdrop.querySelector("#end-cancel").addEventListener("click", close);
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
   backdrop.querySelector("#end-ok").addEventListener("click", async () => {
+    const okBtn = backdrop.querySelector("#end-ok");
+    okBtn.disabled = true; okBtn.textContent = "종료 중…";
     const fb = backdrop.querySelector("#end-feedback").value.trim();
+    const body = {};
+    if (rating > 0) body.rating = rating;
+    if (fb) body.feedback = fb;
     try {
       const res = await fetch(API + `/api/conversations/${conversationId}/end`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rating: rating || null, feedback: fb || null }),
+        body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error("실패");
+      if (!res.ok) {
+        let msg = "종료 처리에 실패했습니다.";
+        try { const j = await res.json(); if (j.detail) msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch (e) {}
+        throw new Error(msg);
+      }
       close();
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       $("composer").style.display = "none";
@@ -647,7 +656,8 @@ function openEndModal() {
       $("hint").textContent = "상담이 종료되었습니다. 이용해 주셔서 감사합니다.";
       showNotice("상담이 종료되었습니다. 평가를 남겨 주셔서 감사합니다.");
     } catch (e) {
-      showNotice("종료 처리 중 오류가 발생했습니다.");
+      okBtn.disabled = false; okBtn.textContent = "상담 종료";
+      showNotice(e.message || "종료 처리 중 오류가 발생했습니다.");
     }
   });
 }
