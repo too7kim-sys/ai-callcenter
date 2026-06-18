@@ -34,6 +34,17 @@ def _seconds_between(start, end):
     return delta if delta >= 0 else None
 
 
+def _frt_seconds(conv: Conversation) -> float | None:
+    """첫 고객 메시지 → 첫 비고객 응답 시간 (초)."""
+    first_cust = None
+    for m in conv.messages:
+        if m.role == "customer" and first_cust is None:
+            first_cust = m.created_at
+        elif m.role in ("ai", "agent") and first_cust is not None:
+            return _seconds_between(first_cust, m.created_at)
+    return None
+
+
 @router.get("/dashboard")
 def dashboard(
     db: Session = Depends(get_db),
@@ -137,19 +148,7 @@ def dashboard_kpi(
     ]
     aht_avg = round(sum(aht_values) / len(aht_values)) if aht_values else None
 
-    frt_values: list[float] = []
-    for c in closed:
-        first_cust = None
-        first_resp = None
-        for m in c.messages:  # 이미 id 기준 정렬됨
-            if m.role == "customer" and first_cust is None:
-                first_cust = m.created_at
-            elif m.role in ("ai", "agent") and first_cust is not None:
-                first_resp = m.created_at
-                break
-        s = _seconds_between(first_cust, first_resp)
-        if s is not None:
-            frt_values.append(s)
+    frt_values = [s for s in (_frt_seconds(c) for c in closed) if s is not None]
     frt_avg = round(sum(frt_values) / len(frt_values)) if frt_values else None
 
     # FCR: 종료 상담 중 (에스컬레이션·고객 호출·고위험 신호) 없이 닫힌 비율
@@ -206,3 +205,83 @@ def dashboard_kpi(
         "escalation_rate": esc_rate,
         "trend": trend,
     }
+
+
+@router.get("/dashboard/agents")
+def dashboard_agents(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.CONV_VIEW)),
+):
+    """상담원별 성과 리더보드 — 처리량·AHT·FRT·CSAT·에스컬레이션율.
+
+    days 는 1~365 사이로 클램프. 배정된 상담만 집계 대상.
+    """
+    days = max(1, min(365, int(days)))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    convs = db.query(Conversation).filter(
+        Conversation.created_at >= since,
+        Conversation.assigned_agent_id.isnot(None),
+    ).all()
+
+    # 에이전트 역할 메시지 수 (별도 쿼리)
+    msg_rows = (
+        db.query(Conversation.assigned_agent_id, func.count(Message.id))
+        .join(Message, Message.conversation_id == Conversation.id)
+        .filter(
+            Conversation.created_at >= since,
+            Conversation.assigned_agent_id.isnot(None),
+            Message.role == "agent",
+        )
+        .group_by(Conversation.assigned_agent_id)
+        .all()
+    )
+    msg_counts = dict(msg_rows)
+
+    per_agent: dict[int, dict] = {}
+    for c in convs:
+        aid = c.assigned_agent_id
+        d = per_agent.setdefault(aid, {
+            "assigned": 0, "closed": 0, "escalated": 0,
+            "aht": [], "frt": [], "ratings": [],
+        })
+        d["assigned"] += 1
+        if c.status == "escalated" or c.risk_level == "high":
+            d["escalated"] += 1
+        if c.status == "closed":
+            d["closed"] += 1
+            ahts = _seconds_between(c.created_at, c.updated_at)
+            if ahts is not None and ahts > 0:
+                d["aht"].append(ahts)
+            frt = _frt_seconds(c)
+            if frt is not None:
+                d["frt"].append(frt)
+        if c.customer_rating:
+            d["ratings"].append(c.customer_rating)
+
+    def avg(values):
+        return round(sum(values) / len(values)) if values else None
+
+    result = []
+    for aid, d in per_agent.items():
+        u = db.get(AgentUser, aid)
+        result.append({
+            "user_id": aid,
+            "username": u.username if u else "(삭제됨)",
+            "name": (u.name or u.username) if u else "(삭제됨)",
+            "active": bool(u and u.active),
+            "assigned_count": d["assigned"],
+            "closed_count": d["closed"],
+            "messages_sent": int(msg_counts.get(aid, 0)),
+            "aht_seconds": avg(d["aht"]),
+            "frt_seconds": avg(d["frt"]),
+            "csat_avg": round(sum(d["ratings"]) / len(d["ratings"]), 2) if d["ratings"] else None,
+            "csat_count": len(d["ratings"]),
+            "escalation_rate": round(d["escalated"] / d["assigned"], 3) if d["assigned"] else 0,
+            "closure_rate": round(d["closed"] / d["assigned"], 3) if d["assigned"] else 0,
+        })
+
+    # 정렬: 종료 건수 내림차순 → 동수면 CSAT 내림차순
+    result.sort(key=lambda r: (r["closed_count"], r["csat_avg"] or 0), reverse=True)
+    return {"window_days": days, "agents": result}

@@ -78,6 +78,31 @@
   .trend-chart .line-c  { stroke: var(--c-brand-700); stroke-width: 2; fill: none; }
   .trend-chart .dot-c   { fill: var(--c-brand-700); }
   .trend-chart .axis-text { font-size: 10px; fill: var(--c-text-muted); }
+
+  /* 상담원 리더보드 */
+  .agents-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+  .agents-table th, .agents-table td {
+    padding: 10px 12px; border-bottom: 1px solid var(--c-surface-alt);
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .agents-table th { color: var(--c-text-muted); font-weight: var(--fw-semibold);
+    text-transform: uppercase; font-size: var(--text-xs); letter-spacing: .04em; }
+  .agents-table th:first-child, .agents-table td:first-child { text-align: left; }
+  .agents-table tr:hover { background: var(--c-surface-alt); }
+  .agent-name { font-weight: var(--fw-semibold); color: var(--c-text); }
+  .agent-username { color: var(--c-text-faint); font-size: var(--text-xs); }
+  .agent-inactive { color: var(--c-text-faint); }
+  .rank { color: var(--c-text-faint); font-weight: var(--fw-bold); width: 28px; }
+  .csat-good { color: var(--c-success); }
+  .csat-bad { color: var(--c-danger); }
+  .esc-high { color: var(--c-danger); }
+  .period-toggle { display: flex; gap: 4px; }
+  .period-toggle button {
+    padding: 4px 12px; font-size: var(--text-xs); border-radius: 6px;
+    border: 1px solid var(--c-surface-alt); background: transparent; cursor: pointer;
+    color: var(--c-text-muted);
+  }
+  .period-toggle button.active { background: var(--c-brand-700); color: white; border-color: var(--c-brand-700); }
 </style>
 </head>
 <body>
@@ -107,6 +132,21 @@
     </div>
     <div class="card-body">
       <svg class="trend-chart" id="trend-chart" viewBox="0 0 700 200" preserveAspectRatio="none" aria-label="일별 상담 건수 추이"></svg>
+    </div>
+  </section>
+
+  <!-- 상담원 성과 리더보드 -->
+  <section class="card" style="margin-bottom: var(--space-5);">
+    <div class="card-head">
+      <div class="title">상담원 성과</div>
+      <div class="period-toggle" id="agents-period">
+        <button data-days="7">7일</button>
+        <button data-days="30" class="active">30일</button>
+        <button data-days="90">90일</button>
+      </div>
+    </div>
+    <div class="card-body" id="agents-body">
+      <p class="muted">불러오는 중…</p>
     </div>
   </section>
 
@@ -299,7 +339,71 @@ function renderTrendChart(trend) {
   svg.innerHTML = html;
 }
 
-$("refresh-btn").addEventListener("click", () => { load(); loadKpi(); });
+// --- 상담원 성과 리더보드 ---
+let agentsDays = 30;
+
+async function loadAgents() {
+  let r;
+  try { r = await (await fetch(`/api/dashboard/agents?days=${agentsDays}`)).json(); }
+  catch (e) { return; }
+  const rows = r.agents || [];
+  if (!rows.length) {
+    $("agents-body").innerHTML =
+      `<p class="muted">최근 ${r.window_days}일 간 배정된 상담이 없습니다.</p>`;
+    return;
+  }
+  const escClass = (rate) => rate >= 0.3 ? "esc-high" : "";
+  const csatClass = (avg) => avg == null ? "" : (avg >= 4 ? "csat-good" : (avg < 3 ? "csat-bad" : ""));
+  const html = `
+    <table class="agents-table">
+      <thead><tr>
+        <th>상담원</th>
+        <th>배정</th>
+        <th>종료</th>
+        <th>종료율</th>
+        <th>메시지</th>
+        <th>AHT</th>
+        <th>FRT</th>
+        <th>CSAT</th>
+        <th>에스컬레이션</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map((a, i) => `
+          <tr class="${a.active ? '' : 'agent-inactive'}">
+            <td>
+              <span class="rank">#${i + 1}</span>
+              <span class="agent-name">${UI.escapeHtml(a.name)}</span>
+              <span class="agent-username">@${UI.escapeHtml(a.username)}</span>
+              ${a.active ? '' : '<span class="badge">비활성</span>'}
+            </td>
+            <td>${a.assigned_count}</td>
+            <td>${a.closed_count}</td>
+            <td>${fmtPct(a.closure_rate)}</td>
+            <td>${a.messages_sent}</td>
+            <td>${fmtDuration(a.aht_seconds)}</td>
+            <td>${fmtDuration(a.frt_seconds)}</td>
+            <td class="${csatClass(a.csat_avg)}">
+              ${a.csat_avg != null ? a.csat_avg.toFixed(1) : "—"}
+              ${a.csat_count ? `<span class="agent-username"> (${a.csat_count})</span>` : ""}
+            </td>
+            <td class="${escClass(a.escalation_rate)}">${fmtPct(a.escalation_rate)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>`;
+  $("agents-body").innerHTML = html;
+}
+
+$("agents-period").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-days]");
+  if (!btn) return;
+  agentsDays = parseInt(btn.dataset.days, 10);
+  document.querySelectorAll("#agents-period button").forEach((b) =>
+    b.classList.toggle("active", b === btn));
+  loadAgents();
+});
+
+$("refresh-btn").addEventListener("click", () => { load(); loadKpi(); loadAgents(); });
 document.addEventListener("auth-ready", (e) => {
   const user = e.detail;
   const perms = user?.permissions || [];
@@ -308,6 +412,7 @@ document.addEventListener("auth-ready", (e) => {
   }
   load();
   loadKpi();
+  loadAgents();
 });
 </script>
 </body>
