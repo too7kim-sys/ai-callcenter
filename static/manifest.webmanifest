@@ -1,0 +1,47 @@
+{
+  "name": "AI 콜센터",
+  "short_name": "콜센터",
+  "description": "FastAPI + AI 기반 콜센터. 채팅·음성·상담원 콘솔 통합.",
+  "start_url": "/agent",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f8fafc",
+  "theme_color": "#1d4ed8",
+  "lang": "ko",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "상담 콘솔",
+      "short_name": "콘솔",
+      "url": "/agent",
+      "description": "활성 상담 큐"
+    },
+    {
+      "name": "콜백 큐",
+      "short_name": "콜백",
+      "url": "/callbacks",
+      "description": "예약된 콜백 처리"
+    },
+    {
+      "name": "대시보드",
+      "short_name": "대시보드",
+      "url": "/dashboard",
+      "description": "오늘 한눈에"
+    }
+  ]
+}

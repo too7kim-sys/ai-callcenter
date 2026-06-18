@@ -242,3 +242,30 @@ def widget_loader():
 def widget_demo_page():
     """위젯 동작 확인용 외부 사이트 시뮬레이션 페이지."""
     return FileResponse(os.path.join(STATIC_DIR, "widget-demo.html"))
+
+
+# ====================================================================
+# PWA — manifest / service worker / offline 폴백
+# ====================================================================
+
+@app.get("/manifest.webmanifest")
+def pwa_manifest():
+    return FileResponse(
+        os.path.join(STATIC_DIR, "manifest.webmanifest"),
+        media_type="application/manifest+json",
+    )
+
+
+@app.get("/sw.js")
+def pwa_service_worker():
+    return FileResponse(
+        os.path.join(STATIC_DIR, "sw.js"),
+        media_type="application/javascript",
+        # SW 는 즉시 갱신이 중요 — 캐시 헤더 최소화
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Service-Worker-Allowed": "/"},
+    )
+
+
+@app.get("/offline.html")
+def pwa_offline():
+    return FileResponse(os.path.join(STATIC_DIR, "offline.html"))

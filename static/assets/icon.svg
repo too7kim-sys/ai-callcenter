@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1d4ed8"/>
+  <g transform="translate(96 96)" fill="none" stroke="#fff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 챗 버블 -->
+    <path d="M320 160a160 160 0 1 1-46.6-112.9L320 32l-15.1 46.6A160 160 0 0 1 320 160z" fill="#fff" fill-opacity=".08"/>
+    <!-- AI 점들 (말줄임) -->
+    <circle cx="120" cy="160" r="14" fill="#fff" stroke="none"/>
+    <circle cx="170" cy="160" r="14" fill="#fff" stroke="none"/>
+    <circle cx="220" cy="160" r="14" fill="#fff" stroke="none"/>
+  </g>
+</svg>
