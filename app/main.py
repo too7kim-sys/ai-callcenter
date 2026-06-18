@@ -2,11 +2,12 @@
 import logging
 import os
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
-from . import accounts, ai, auth, config, faq
+from . import accounts, ai, auth, backup, config, faq
 from .database import Base, engine
 from .routers import agent, chat, password
 from .routers import audit as audit_router
@@ -60,6 +61,7 @@ auth.seed_roles()      # 시스템 역할(admin, agent)
 accounts.seed_accounts()
 auth.seed_admin()
 faq.init_db()          # FAQ 시드 + 캐시 로딩
+backup.start_scheduler()  # 자동 백업 데몬 (BACKUP_ENABLED=false 면 no-op)
 
 app = FastAPI(title="AI 콜센터", version="1.0.0")
 app.include_router(chat.router)
@@ -89,6 +91,60 @@ def api_config():
     mode = ai.get_ai_mode()
     model = {"claude": config.CLAUDE_MODEL, "ollama": config.OLLAMA_MODEL}.get(mode, "—")
     return {"ai_mode": mode, "model": model}
+
+
+# ====================================================================
+# 헬스체크 (LB / 컨테이너 오케스트레이션 용)
+# ====================================================================
+
+@app.get("/healthz")
+def healthz():
+    """Liveness — 프로세스가 떠 있으면 200. 외부 의존성 검사 X."""
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz():
+    """Readiness — DB 까지 도달 가능해야 200, 아니면 503."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unready", "error": str(exc)[:200]},
+        )
+    return {"status": "ready"}
+
+
+# ====================================================================
+# 백업 관리 (admin 전용)
+# ====================================================================
+
+@app.get("/api/admin/backup/status")
+def backup_status(_user=Depends(auth.require_admin)):
+    """현재 백업 설정 + 최근 백업 정보."""
+    return backup.status()
+
+
+@app.get("/api/admin/backup/list")
+def backup_list(_user=Depends(auth.require_admin)):
+    return backup.list_backups()
+
+
+@app.post("/api/admin/backup/run")
+def backup_run(_user=Depends(auth.require_admin)):
+    """수동 백업 트리거 (테스트·일회성 스냅샷용)."""
+    try:
+        path = backup.backup_now()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"백업 실패: {exc}")
+    removed = backup.cleanup_old_backups()
+    return {"ok": True, "file": path.name, "cleaned": removed}
 
 
 @app.get("/")
