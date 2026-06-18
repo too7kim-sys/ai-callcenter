@@ -12,7 +12,7 @@ import time
 from . import accounts, ai, auth, backup, config, faq, metrics
 from .database import Base, engine
 from .security_headers import SecurityHeadersMiddleware
-from .routers import agent, callback, categories, chat, password
+from .routers import agent, callback, categories, chat, experiments, password
 from .routers import audit as audit_router
 from .routers import auth as auth_router
 from .routers import dashboard as dashboard_router
@@ -59,6 +59,7 @@ def _ensure_columns():
             ("agent_requested", "BOOLEAN DEFAULT 0"),
             ("customer_rating", "INTEGER"),
             ("customer_feedback", "TEXT"),
+            ("ai_variant", "VARCHAR"),
         ],
         "messages": [
             ("feedback", "VARCHAR"),
@@ -119,6 +120,7 @@ app.include_router(audit_router.router)
 app.include_router(realtime_router.router)
 app.include_router(callback.router)
 app.include_router(categories.router)
+app.include_router(experiments.router)
 
 STATIC_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static"

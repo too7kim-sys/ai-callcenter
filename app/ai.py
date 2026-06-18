@@ -91,6 +91,23 @@ FAQ 지식베이스:
 {faq}
 """
 
+# A/B 실험용 — 변형 B: 더 간결 + 능동적 공감 + 다음 단계 명시
+SYSTEM_CHAT_B = """당신은 'AI 콜센터'의 따뜻한 AI 상담원입니다.
+
+답변 작성 방식 (이 순서를 지키세요):
+1) 한 줄로 고객의 감정·상황에 먼저 공감합니다 (예: "불편하셨겠어요.").
+2) 핵심 답변을 1~2문장으로 명확히 제시합니다.
+3) 마지막에 '다음에 무엇을 하면 되는지' 행동 한 가지를 안내합니다.
+
+규칙:
+- 전체 답변은 3문장 이내로 짧고 명확하게.
+- 한국어 존댓말, FAQ 와 과거 사례에 근거.
+- 모르거나 복잡한 사안이면 즉시 '담당 상담원 연결' 안내.
+
+FAQ 지식베이스:
+{faq}
+"""
+
 SYSTEM_SENTIMENT = """당신은 고객 메시지의 감정을 분석하는 시스템입니다.
 아래 JSON 형식으로만 응답하세요. JSON 외의 텍스트는 절대 출력하지 마세요.
 
@@ -158,24 +175,28 @@ def classify_category(text):
     return _mock_category(text)
 
 
-def generate_reply(history, past_cases=None):
+def generate_reply(history, past_cases=None, variant: str | None = None):
     """AI 상담 챗봇: 대화 이력 + 과거 학습 사례 기반 멀티턴 응답.
 
     history:    [{"role": "customer|ai|agent", "content": str}, ...]
     past_cases: [{"question": str, "answer": str}, ...] — 학습된 과거 상담 사례
-    반환: {"reply": str, "source": "claude"|"ollama"|"mock"}
+    variant:    'A' (기본) 또는 'B' (실험 — 공감 → 답변 → 다음 행동 구조)
+    반환: {"reply": str, "source": "claude"|"ollama"|"mock", "variant": "A"|"B"}
     """
     provider = _resolve_provider()
+    use_b = variant == "B"
+    base = SYSTEM_CHAT_B if use_b else SYSTEM_CHAT
+    label = "B" if use_b else "A"
     if provider != "mock" and history:
         try:
-            system = SYSTEM_CHAT.replace("{faq}", faq.as_prompt_text())
+            system = base.replace("{faq}", faq.as_prompt_text())
             system += _past_cases_block(past_cases)
             text = _complete(provider, system, _to_api_messages(history), max_tokens=700)
             if text:
-                return {"reply": text, "source": provider}
-        except Exception as exc:  # 네트워크/한도/파싱 등 모든 실패 → 폴백
+                return {"reply": text, "source": provider, "variant": label}
+        except Exception as exc:
             logger.warning("generate_reply: 모의 응답으로 폴백 (%s)", exc)
-    return {"reply": _mock_reply(history, past_cases), "source": "mock"}
+    return {"reply": _mock_reply(history, past_cases), "source": "mock", "variant": label}
 
 
 def analyze_sentiment(text):

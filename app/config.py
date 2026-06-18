@@ -47,6 +47,17 @@ SMTP_FROM = os.getenv("SMTP_FROM", "no-reply@ai-callcenter.local").strip() or "n
 # 비밀번호 재설정 링크의 기본 URL. 미설정 시 요청 URL을 사용한다.
 APP_BASE_URL = os.getenv("APP_BASE_URL", "").strip().rstrip("/")
 
+# --- A/B 프롬프트 실험 ---
+# AI 답변 프롬프트의 A(기본) vs B(공감→답변→행동 구조) 비교 실험.
+# AB_EXPERIMENT_ENABLED=true 면 새 상담을 비율대로 무작위 배정.
+AB_EXPERIMENT_ENABLED = (os.getenv("AB_EXPERIMENT_ENABLED", "false").strip().lower() == "true")
+try:
+    AB_EXPERIMENT_RATIO_B = float(os.getenv("AB_EXPERIMENT_RATIO_B", "0.5") or 0.5)
+except ValueError:
+    AB_EXPERIMENT_RATIO_B = 0.5
+AB_EXPERIMENT_RATIO_B = max(0.0, min(1.0, AB_EXPERIMENT_RATIO_B))
+
+
 # --- 외부 알림 (Slack / Teams / Discord Incoming Webhook) ---
 # URL 을 설정하면 고위험 상담·에스컬레이션 등 중요 이벤트를 외부 채널로 푸시한다.
 # 빈 문자열이면 알림 모듈이 no-op 으로 동작.

@@ -43,7 +43,11 @@ router = APIRouter(prefix="/api", tags=["customer"])
 )
 def create_conversation(payload: ConversationCreate, db: Session = Depends(get_db)):
     """새 상담 시작 (IP 당 5/분)."""
+    import random
     conv = Conversation(customer_name=(payload.customer_name or "고객").strip() or "고객")
+    # A/B 실험 — enabled 면 새 상담을 비율대로 무작위 배정
+    if config.AB_EXPERIMENT_ENABLED:
+        conv.ai_variant = "B" if random.random() < config.AB_EXPERIMENT_RATIO_B else "A"
     db.add(conv)
     db.commit()
     db.refresh(conv)
@@ -221,7 +225,7 @@ async def chat(conversation_id: int, payload: ChatRequest, db: Session = Depends
 
     def _reply_pipeline():
         past_cases = knowledge.retrieve(db, message, limit=3)
-        return ai.generate_reply(history, past_cases=past_cases)
+        return ai.generate_reply(history, past_cases=past_cases, variant=conv.ai_variant)
 
     # 1) 두 AI 호출을 동시에 실행
     sentiment, reply = await asyncio.gather(

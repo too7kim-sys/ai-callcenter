@@ -36,6 +36,9 @@ class Conversation(Base):
     customer_rating = Column(Integer, nullable=True)  # 1~5
     customer_feedback = Column(Text, nullable=True)
 
+    # A/B 프롬프트 실험 — 'A' (대조) / 'B' (실험) / NULL (실험 비활성 시)
+    ai_variant = Column(String, nullable=True, index=True)
+
     created_at = Column(DateTime, default=_now, index=True)
     updated_at = Column(DateTime, default=_now, onupdate=_now, index=True)
 
