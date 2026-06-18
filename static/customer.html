@@ -171,6 +171,28 @@
   }
   .quick-actions .qa-btn:hover { background: #e2e8f0; }
   .quick-actions .qa-btn.danger { color: #b91c1c; }
+  /* 통화 상태 바 */
+  .call-bar {
+    display: none;
+    padding: 10px 16px;
+    background: #1d4ed8;
+    color: #fff;
+    font-size: 13px;
+    text-align: center;
+  }
+  .call-bar.shown { display: block; }
+  .call-bar .hangup {
+    margin-left: 12px;
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .call-bar.connected { background: #16a34a; }
   .icon-btn {
     background: #fff;
     border: 1px solid #cbd5e1;
@@ -287,9 +309,9 @@
   </div>
 
   <!-- 통화 중 상태 표시 -->
-  <div id="call-bar" style="display:none; padding:10px 16px; background:#1d4ed8; color:#fff; font-size:13px; text-align:center;">
+  <div id="call-bar" class="call-bar" aria-live="polite">
     <span id="call-status">통화 연결 중…</span>
-    <button id="call-hangup-btn" style="margin-left:12px; background:#ef4444; color:#fff; border:none; border-radius:6px; padding:4px 12px; font-size:12px; cursor:pointer;">끊기</button>
+    <button id="call-hangup-btn" class="hangup" type="button">끊기</button>
   </div>
   <div class="composer" id="composer" style="display:none">
     <button class="icon-btn" id="mic-btn" title="음성으로 말하기" aria-label="음성으로 말하기">
@@ -781,8 +803,10 @@ $("call-hangup-btn").addEventListener("click", () => { if (_call) _call.hangup()
 let _call = null;
 let _callId = null;
 
-function setCallStatus(text, show = true) {
-  $("call-bar").style.display = show ? "block" : "none";
+function setCallStatus(text, show = true, connected = false) {
+  const bar = $("call-bar");
+  bar.classList.toggle("shown", !!show);
+  bar.classList.toggle("connected", !!connected);
   $("call-status").textContent = text;
 }
 
@@ -817,8 +841,8 @@ async function _startCallClient(callId, isCaller) {
     callId,
     conversationId,
     onState: (s) => {
-      if (s === "connecting") setCallStatus("연결 중…");
-      else if (s === "connected") setCallStatus("☎ 통화 중");
+      if (s === "connecting") setCallStatus("연결 중…", true, false);
+      else if (s === "connected") setCallStatus("☎ 통화 중", true, true);
       else if (s === "ended") { setCallStatus("", false); _call = null; _callId = null; }
     },
     onError: (e) => showNotice("통화 오류: " + e.message),

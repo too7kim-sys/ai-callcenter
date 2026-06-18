@@ -19,7 +19,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -31,6 +31,36 @@ from ..permissions import P
 from ..schemas import CallEndRequest, CallRequest, CallSignalRequest
 
 router = APIRouter(prefix="/api/calls", tags=["calls"])
+
+# 무응답으로 90초 이상 잔존한 requesting 통화 → missed 자동 종료.
+# /active, /request, /answer 핸들러가 호출되는 시점에 lazy 정리.
+_REQUESTING_TIMEOUT_SECS = 90
+
+
+def _sweep_stale(db: Session) -> int:
+    """오래된 requesting 통화 자동 종료. 정리한 건수 반환."""
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=_REQUESTING_TIMEOUT_SECS)
+    stale = (
+        db.query(Call)
+          .filter(Call.status == "requesting", Call.requested_at < cutoff)
+          .all()
+    )
+    if not stale:
+        return 0
+    now = datetime.now(timezone.utc)
+    for call in stale:
+        call.status = "ended"
+        call.ended_at = now
+        call.end_reason = "missed"
+    db.commit()
+    for call in stale:
+        realtime.publish({
+            "type": "call_ended",
+            "call_id": call.id,
+            "conversation_id": call.conversation_id,
+            "reason": "missed",
+        })
+    return len(stale)
 
 
 def _serialize(call: Call, db: Session) -> dict:
@@ -56,6 +86,7 @@ def _serialize(call: Call, db: Session) -> dict:
 )
 def request_call(payload: CallRequest, db: Session = Depends(get_db)):
     """고객(익명)이 통화 요청. IP 당 5/분."""
+    _sweep_stale(db)
     conv = db.get(Conversation, payload.conversation_id)
     if conv is None:
         raise HTTPException(status_code=404, detail="상담을 찾을 수 없습니다.")
@@ -93,6 +124,7 @@ def answer_call(
     user=Depends(auth.require_permission(P.CONV_VIEW)),
 ):
     """상담원이 통화 응답. 첫 응답자만 성공 (이미 답변/종료 시 409)."""
+    _sweep_stale(db)
     call = db.get(Call, call_id)
     if call is None:
         raise HTTPException(status_code=404, detail="통화를 찾을 수 없습니다.")
@@ -159,7 +191,7 @@ def signal_call(
     if call.status not in ("requesting", "answered"):
         raise HTTPException(status_code=409, detail="활성 통화가 아닙니다.")
 
-    role = "agent" if _is_authenticated(db, request.cookies.get(auth.SESSION_COOKIE_NAME)) else "customer"
+    role = _from_role(request, db)
     realtime.publish({
         "type": "call_signal",
         "call_id": call.id,
@@ -212,6 +244,7 @@ def list_active_calls(
     _user=Depends(auth.require_permission(P.CONV_VIEW)),
 ):
     """현재 벨림(requesting) + 통화중(answered) 목록."""
+    _sweep_stale(db)
     rows = (
         db.query(Call)
           .filter(Call.status.in_(("requesting", "answered")))
@@ -238,17 +271,20 @@ def list_recent_calls(
     return [_serialize(c, db) for c in rows]
 
 
-def _is_authenticated(db: Session, token: str | None) -> bool:
-    """세션 쿠키 유효성만 가볍게 확인 — /signal 의 'from' 라벨 결정용."""
+def _from_role(request: Request, db: Session) -> str:
+    """/signal 호출자의 'from' 라벨 — 인증 쿠키 보유 시 'agent', 아니면 'customer'.
+
+    예외를 던지지 않는 가벼운 검증 (current_user 의존성과 분리해 익명 호출도 허용).
+    """
+    token = request.cookies.get(auth.SESSION_COOKIE_NAME)
     if not token:
-        return False
-    try:
-        sess = (
-            db.query(AgentSession)
-              .filter(AgentSession.token == token,
-                      AgentSession.expires_at > datetime.utcnow())
-              .first()
-        )
-        return sess is not None
-    except Exception:
-        return False
+        return "customer"
+    sess = db.query(AgentSession).filter(AgentSession.token == token).first()
+    if sess is None or sess.expires_at is None:
+        return "customer"
+    expires = sess.expires_at
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if expires < datetime.now(timezone.utc):
+        return "customer"
+    return "agent"

@@ -69,7 +69,13 @@
       this.pc.onconnectionstatechange = () => {
         const s = this.pc.connectionState;
         if (s === "connected") this.onState("connected");
-        else if (s === "failed" || s === "disconnected" || s === "closed") {
+        else if (s === "failed") {
+          // ICE/연결 실패 — 서버에 알려서 상대방 UI 도 정리되도록
+          if (!this._ended) {
+            this.onError(new Error("연결 실패 (NAT 또는 네트워크 문제)"));
+            this.hangup();
+          }
+        } else if (s === "disconnected" || s === "closed") {
           if (!this._ended) this.onState("ended");
         }
       };
@@ -124,12 +130,17 @@
     }
 
     _send(kind, payload) {
-      // fire-and-forget. 실패해도 통화 자체에 치명적이지 않은 경우가 많음.
+      // 시그널링 자체가 막히면 통화 성립 불가 — 실패 시 디버그 로그.
       fetch(`/api/calls/${this.callId}/signal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ kind, payload }),
-      }).catch(() => {});
+      }).then((r) => {
+        if (!r.ok) console.warn("[call] signal", kind, "→ HTTP", r.status);
+      }).catch((e) => {
+        console.warn("[call] signal", kind, "실패:", e);
+      });
     }
 
     async hangup() {
