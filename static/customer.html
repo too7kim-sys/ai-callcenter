@@ -495,13 +495,17 @@ function startPolling() {
   }, 4000);
 }
 
-// ===== 음성 상담 (Web Speech API) =====
+// ===== 음성 상담 (Web Speech API + 서버 TTS) =====
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 const TTS_OK = "speechSynthesis" in window;
 let recognition = null;
 let listening = false;
 let gotSpeech = false;
 let ttsEnabled = TTS_OK;
+// 서버 TTS(Edge TTS) 가능 여부 — 가능하면 자연스러운 한국어 음성 사용,
+// 불가능하면 브라우저 SpeechSynthesis 폴백.
+let SERVER_TTS = null;  // null=미확인 / true / false
+let _ttsAudio = null;   // 현재 재생 중인 <audio> (중복 재생 방지)
 
 function showNotice(text) {
   const n = document.createElement("div");
@@ -512,10 +516,42 @@ function showNotice(text) {
 }
 
 // --- 음성 재생 (TTS): 봇·상담원 답변을 읽어준다 ---
-function speak(text) {
-  if (!ttsEnabled || !TTS_OK || !text) return;
+//   1순위: 서버 TTS(/api/voice/tts) — Edge TTS 자연스러운 한국어
+//   2순위: 브라우저 SpeechSynthesis (즉시 재생, 음질 OS 의존)
+async function speak(text) {
+  if (!ttsEnabled || !text) return;
+  // 서버 가용성 미확인이면 한 번만 조회 (캐시)
+  if (SERVER_TTS === null) {
+    try {
+      const r = await fetch(API + "/api/voice/tts/status");
+      SERVER_TTS = r.ok ? !!(await r.json()).available : false;
+    } catch (_) { SERVER_TTS = false; }
+  }
+  // 진행 중 재생 중단
+  try { if (_ttsAudio) { _ttsAudio.pause(); _ttsAudio = null; } } catch (_) {}
+  if (TTS_OK) { try { window.speechSynthesis.cancel(); } catch (_) {} }
+
+  if (SERVER_TTS) {
+    try {
+      const r = await fetch(API + "/api/voice/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text.slice(0, 4000) }),
+      });
+      if (r.ok) {
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        _ttsAudio = audio;
+        audio.onended = audio.onerror = () => URL.revokeObjectURL(url);
+        await audio.play();
+        return;
+      }
+    } catch (_) { /* 서버 실패 → 브라우저 폴백 */ }
+  }
+  // 폴백: 브라우저 TTS
+  if (!TTS_OK) return;
   try {
-    window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "ko-KR";
     window.speechSynthesis.speak(u);
@@ -535,7 +571,10 @@ function updateTtsBtn() {
 }
 function toggleTts() {
   ttsEnabled = !ttsEnabled;
-  if (!ttsEnabled && TTS_OK) window.speechSynthesis.cancel();
+  if (!ttsEnabled) {
+    if (TTS_OK) { try { window.speechSynthesis.cancel(); } catch (_) {} }
+    try { if (_ttsAudio) { _ttsAudio.pause(); _ttsAudio = null; } } catch (_) {}
+  }
   updateTtsBtn();
 }
 

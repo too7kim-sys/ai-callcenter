@@ -2,11 +2,12 @@
 import asyncio
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from datetime import datetime
 
-from .. import ai, config, knowledge, notifier
+from .. import ai, config, knowledge, notifier, tts
 from ..database import get_db
 from ..models import Conversation, Message
 from ..schemas import (
@@ -15,6 +16,7 @@ from ..schemas import (
     ConversationCreate,
     CustomerEndRequest,
     FeedbackRequest,
+    TtsRequest,
 )
 from ..service import (
     build_history,
@@ -50,6 +52,42 @@ def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
     """상담 상세 + 메시지 조회 (고객/상담원 공용)."""
     conv = get_conversation_or_404(db, conversation_id)
     return serialize_conversation(conv, include_messages=True, db=db)
+
+
+@router.get("/voice/tts/status")
+def tts_status():
+    """TTS 엔진 가용 여부 + 기본 음성."""
+    return tts.engine_info()
+
+
+@router.get("/voice/tts/voices")
+def tts_voices():
+    """사용 가능한 음성 목록 (UI 셀렉트박스용)."""
+    return tts.list_voices()
+
+
+@router.post("/voice/tts")
+async def tts_synthesize(payload: TtsRequest):
+    """텍스트를 한국어 음성으로 변환해 오디오 바이트로 반환한다.
+
+    Edge TTS 가 가능하면 자연스러운 한국어, 불가능하면 espeak-ng 폴백.
+    응답은 audio/mpeg 또는 audio/wav 로 브라우저 <audio> 태그에서 바로 재생 가능.
+    """
+    if not tts.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="TTS 엔진을 사용할 수 없습니다. "
+                   "`pip install edge-tts` 또는 `apt-get install espeak-ng` 후 재시도하세요.",
+        )
+    try:
+        data, mime = await tts.synthesize(payload.text, payload.voice)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"음성 합성 중 오류: {exc}")
+    return Response(content=data, media_type=mime)
 
 
 @router.get("/business-status")

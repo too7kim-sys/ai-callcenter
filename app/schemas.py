@@ -70,6 +70,11 @@ class AgentRequestBody(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
+class TtsRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=5000)
+    voice: str | None = Field(default=None, max_length=64)
+
+
 class PasswordQuery(BaseModel):
     query: str = Field(min_length=1, max_length=200)  # 이메일 또는 아이디
 
