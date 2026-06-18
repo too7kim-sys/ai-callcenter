@@ -2,14 +2,17 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
-from .. import auth, permissions, security
+from .. import auth, permissions, ratelimit, security
 from ..database import get_db
 from ..schemas import LoginRequest, PasswordChangeRequest
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-@router.post("/login")
+@router.post(
+    "/login",
+    dependencies=[Depends(ratelimit.rate_limit("login", 10, 60))],
+)
 def login(
     payload: LoginRequest,
     request: Request,

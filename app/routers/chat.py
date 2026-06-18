@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from datetime import datetime
 
-from .. import ai, config, knowledge, notifier, tts
+from .. import ai, config, knowledge, notifier, ratelimit, tts
 from ..database import get_db
 from ..models import Conversation, Message
 from ..schemas import (
@@ -37,9 +37,12 @@ def _business_hours_active() -> bool:
 router = APIRouter(prefix="/api", tags=["customer"])
 
 
-@router.post("/conversations")
+@router.post(
+    "/conversations",
+    dependencies=[Depends(ratelimit.rate_limit("conv_create", 5, 60))],
+)
 def create_conversation(payload: ConversationCreate, db: Session = Depends(get_db)):
-    """새 상담 시작."""
+    """새 상담 시작 (IP 당 5/분)."""
     conv = Conversation(customer_name=(payload.customer_name or "고객").strip() or "고객")
     db.add(conv)
     db.commit()
@@ -66,7 +69,10 @@ def tts_voices():
     return tts.list_voices()
 
 
-@router.post("/voice/tts")
+@router.post(
+    "/voice/tts",
+    dependencies=[Depends(ratelimit.rate_limit("tts", 20, 60))],
+)
 async def tts_synthesize(payload: TtsRequest):
     """텍스트를 한국어 음성으로 변환해 오디오 바이트로 반환한다.
 
@@ -193,7 +199,10 @@ def end_conversation(
     return serialize_conversation(conv, include_messages=True, db=db)
 
 
-@router.post("/conversations/{conversation_id}/chat")
+@router.post(
+    "/conversations/{conversation_id}/chat",
+    dependencies=[Depends(ratelimit.rate_limit("chat", 30, 60))],
+)
 async def chat(conversation_id: int, payload: ChatRequest, db: Session = Depends(get_db)):
     """고객 메시지 수신 → (감정 분석 ∥ 학습검색+AI 답변) 병렬 → 저장.
 

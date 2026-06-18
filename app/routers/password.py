@@ -8,7 +8,7 @@ import logging
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from .. import accounts, auth, config
+from .. import accounts, auth, config, ratelimit
 from ..database import get_db
 from ..permissions import P
 from ..schemas import PasswordQuery, PasswordResetConfirm
@@ -79,7 +79,10 @@ def token_info(token: str, db: Session = Depends(get_db)):
     return accounts.token_status(db, token)
 
 
-@router.post("/reset-confirm")
+@router.post(
+    "/reset-confirm",
+    dependencies=[Depends(ratelimit.rate_limit("pw_reset", 10, 60))],
+)
 def reset_confirm(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
     """재설정 토큰을 검증하고 새 비밀번호로 변경한다."""
     return accounts.confirm_reset(db, payload.token, payload.new_password)
