@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 상담</title>
+<style>
+  :root {
+    --c-brand: #1d4ed8;
+    --c-bg:    #f8fafc;
+    --c-text:  #0f172a;
+    --c-muted: #64748b;
+    --c-line:  #e2e8f0;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, system-ui, sans-serif;
+    background: var(--c-bg); color: var(--c-text);
+    font-size: 14px;
+  }
+  .w {
+    display: flex; flex-direction: column;
+    height: 100vh; width: 100%;
+    background: #fff;
+  }
+  header {
+    background: var(--c-brand); color: #fff;
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  header .title { font-weight: 600; font-size: 14px; }
+  header .badge {
+    font-size: 11px; background: rgba(255,255,255,.2); padding: 2px 8px;
+    border-radius: 999px;
+  }
+  header .close {
+    margin-left: auto; background: transparent; border: none;
+    color: #fff; cursor: pointer; font-size: 20px; line-height: 1;
+  }
+  .start {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 24px; text-align: center;
+  }
+  .start h2 { font-size: 18px; margin: 0 0 8px; }
+  .start p  { color: var(--c-muted); margin: 0 0 18px; line-height: 1.5; }
+  .start input {
+    width: 100%; max-width: 240px;
+    padding: 10px 12px; border: 1px solid var(--c-line);
+    border-radius: 8px; font-size: 14px; outline: none;
+    margin-bottom: 10px;
+  }
+  .start input:focus { border-color: var(--c-brand); }
+  .start button {
+    width: 100%; max-width: 240px;
+    background: var(--c-brand); color: #fff;
+    padding: 10px; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .messages {
+    flex: 1; overflow-y: auto; padding: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .row { display: flex; }
+  .row.customer { justify-content: flex-end; }
+  .bubble {
+    max-width: 78%; padding: 8px 12px;
+    border-radius: 14px; font-size: 13px; line-height: 1.45;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .row.ai .bubble, .row.agent .bubble {
+    background: #f1f5f9; color: var(--c-text);
+    border-bottom-left-radius: 4px;
+  }
+  .row.customer .bubble {
+    background: var(--c-brand); color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .row.agent .bubble { border: 1px solid var(--c-line); }
+  .lbl { font-size: 10px; color: var(--c-muted); margin-bottom: 2px; }
+  .composer {
+    display: flex; gap: 6px;
+    padding: 8px; border-top: 1px solid var(--c-line);
+    background: #fff;
+  }
+  .composer input {
+    flex: 1; padding: 9px 12px;
+    border: 1px solid var(--c-line); border-radius: 999px;
+    outline: none; font-size: 13px;
+  }
+  .composer input:focus { border-color: var(--c-brand); }
+  .composer button {
+    background: var(--c-brand); color: #fff;
+    border: none; border-radius: 999px;
+    padding: 9px 16px; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+  }
+  .composer button:disabled { opacity: .4; cursor: not-allowed; }
+  .notice {
+    align-self: center; font-size: 11px; color: var(--c-muted);
+    padding: 4px 10px;
+  }
+  .typing { color: var(--c-muted); font-style: italic; }
+</style>
+</head>
+<body>
+<div class="w">
+  <header>
+    <span class="title" id="title">AI 상담</span>
+    <span class="badge" id="mode">연결 중…</span>
+    <button class="close" id="close-btn" title="닫기">×</button>
+  </header>
+
+  <div class="start" id="start-view">
+    <h2 id="greeting">무엇을 도와드릴까요?</h2>
+    <p>이름을 알려주시면 더 친절히 안내해 드려요.</p>
+    <input id="name-input" placeholder="예: 홍길동" maxlength="40" />
+    <button id="start-btn">상담 시작</button>
+  </div>
+
+  <div class="messages" id="messages" style="display:none"></div>
+
+  <div class="composer" id="composer" style="display:none">
+    <input id="msg-input" placeholder="메시지를 입력하세요" maxlength="2000" />
+    <button id="send-btn">전송</button>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+
+// 커스터마이즈 (외부 사이트에서 ?color=...&greeting=... 등으로 변경 가능)
+if (params.get("color")) {
+  document.documentElement.style.setProperty("--c-brand", params.get("color"));
+}
+if (params.get("title"))    $("title").textContent = params.get("title");
+if (params.get("greeting")) $("greeting").textContent = params.get("greeting");
+
+let conversationId = null;
+let sending = false;
+
+// 부모 프레임에 사이즈/상태 알림 (외부 사이트가 듣고 싶을 때)
+function postToParent(type, data = {}) {
+  try { window.parent.postMessage({ source: "ai-callcenter-widget", type, ...data }, "*"); }
+  catch (_) {}
+}
+
+$("close-btn").addEventListener("click", () => postToParent("close"));
+
+const MODE_LABEL = { claude: "Claude", ollama: "Ollama", mock: "데모" };
+fetch("/api/config")
+  .then((r) => r.json())
+  .then((c) => $("mode").textContent = MODE_LABEL[c.ai_mode] || "데모")
+  .catch(() => $("mode").textContent = "오프라인");
+
+const WHO = { ai: "AI 상담봇", agent: "상담원", customer: "" };
+
+function appendMessage(msg) {
+  const row = document.createElement("div");
+  row.className = "row " + msg.role;
+  if (msg.role !== "customer") {
+    const lbl = document.createElement("div");
+    lbl.className = "lbl";
+    lbl.textContent = WHO[msg.role];
+    row.appendChild(lbl);
+  }
+  const wrap = document.createElement("div");
+  wrap.style.display = "flex";
+  wrap.style.flexDirection = "column";
+  wrap.style.alignItems = msg.role === "customer" ? "flex-end" : "flex-start";
+  while (row.firstChild) wrap.appendChild(row.firstChild);
+  const bub = document.createElement("div");
+  bub.className = "bubble";
+  bub.textContent = msg.content;
+  wrap.appendChild(bub);
+  row.appendChild(wrap);
+  $("messages").appendChild(row);
+  $("messages").scrollTop = $("messages").scrollHeight;
+}
+
+function appendTyping() {
+  const r = document.createElement("div");
+  r.className = "row ai typing"; r.id = "typing-row";
+  const b = document.createElement("div");
+  b.className = "bubble typing"; b.textContent = "AI 가 답변을 준비 중입니다…";
+  r.appendChild(b);
+  $("messages").appendChild(r);
+  $("messages").scrollTop = $("messages").scrollHeight;
+}
+function clearTyping() { const t = document.getElementById("typing-row"); if (t) t.remove(); }
+
+async function startChat() {
+  const name = ($("name-input").value || "").trim() || "고객";
+  const res = await fetch("/api/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ customer_name: name }),
+  });
+  if (!res.ok) {
+    alert("상담 시작 실패. 잠시 후 다시 시도해 주세요.");
+    return;
+  }
+  const conv = await res.json();
+  conversationId = conv.id;
+  $("start-view").style.display = "none";
+  $("messages").style.display = "flex";
+  $("composer").style.display = "flex";
+  const greet = document.createElement("div");
+  greet.className = "notice";
+  greet.textContent = `${name}님, 안녕하세요!`;
+  $("messages").appendChild(greet);
+  $("msg-input").focus();
+  postToParent("started", { conversation_id: conv.id });
+  startSse();
+}
+
+async function send() {
+  if (sending) return;
+  const text = ($("msg-input").value || "").trim();
+  if (!text || !conversationId) return;
+  sending = true;
+  $("send-btn").disabled = true;
+  appendMessage({ role: "customer", content: text });
+  $("msg-input").value = "";
+  appendTyping();
+  try {
+    const res = await fetch(`/api/conversations/${conversationId}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text }),
+    });
+    clearTyping();
+    if (!res.ok) {
+      appendMessage({ role: "ai", content: "응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요." });
+      return;
+    }
+    const data = await res.json();
+    const msgs = (data.conversation.messages || []);
+    // 마지막 ai 메시지 표시
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "ai" || msgs[i].role === "agent") {
+        appendMessage(msgs[i]); break;
+      }
+    }
+    postToParent("message");
+  } catch (e) {
+    clearTyping();
+    appendMessage({ role: "ai", content: "네트워크 오류가 발생했습니다." });
+  } finally {
+    sending = false;
+    $("send-btn").disabled = false;
+    $("msg-input").focus();
+  }
+}
+
+// SSE — 상담원이 보낸 답변 즉시 반영
+let _sse = null;
+function startSse() {
+  if (typeof EventSource === "undefined" || !conversationId) return;
+  try {
+    _sse = new EventSource(`/api/events/stream?conversation_id=${conversationId}`);
+    const refresh = async () => {
+      if (sending || !conversationId) return;
+      try {
+        const conv = await (await fetch(`/api/conversations/${conversationId}`)).json();
+        // 마지막 비고객 메시지가 화면에 없으면 추가
+        const msgs = conv.messages || [];
+        const lastNonCustomer = [...msgs].reverse().find((m) => m.role !== "customer");
+        if (lastNonCustomer) {
+          const existing = $("messages").querySelectorAll(".bubble");
+          const lastText = existing[existing.length - 1]?.textContent;
+          if (lastText !== lastNonCustomer.content) {
+            appendMessage(lastNonCustomer);
+            postToParent("agent_reply");
+          }
+        }
+      } catch (e) { /* 무시 */ }
+    };
+    _sse.addEventListener("message_created", refresh);
+    _sse.addEventListener("conversation_updated", refresh);
+  } catch (e) { /* 미지원 — 정적 폴링 미설치 (위젯에서는 가벼움 우선) */ }
+}
+
+$("start-btn").addEventListener("click", startChat);
+$("name-input").addEventListener("keydown", (e) => { if (e.key === "Enter") startChat(); });
+$("send-btn").addEventListener("click", send);
+$("msg-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+postToParent("ready");
+</script>
+</body>
+</html>

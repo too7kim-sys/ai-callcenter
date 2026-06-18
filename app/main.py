@@ -220,3 +220,25 @@ def templates_page():
 def callbacks_page():
     """콜백 큐 관리 화면."""
     return FileResponse(os.path.join(STATIC_DIR, "callbacks.html"))
+
+
+@app.get("/widget")
+def widget_page():
+    """임베디드 채팅 위젯 (iframe 안에서 동작하는 컴팩트 UI)."""
+    return FileResponse(os.path.join(STATIC_DIR, "widget.html"))
+
+
+@app.get("/widget/loader.js")
+def widget_loader():
+    """외부 사이트에 한 줄로 삽입하는 로더 스크립트."""
+    return FileResponse(
+        os.path.join(STATIC_DIR, "assets", "widget-loader.js"),
+        media_type="application/javascript",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@app.get("/widget/demo")
+def widget_demo_page():
+    """위젯 동작 확인용 외부 사이트 시뮬레이션 페이지."""
+    return FileResponse(os.path.join(STATIC_DIR, "widget-demo.html"))

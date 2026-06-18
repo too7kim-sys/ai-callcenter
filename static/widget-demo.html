@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>위젯 데모 — 외부 사이트 시뮬레이션</title>
+<style>
+  body { font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+         max-width: 720px; margin: 60px auto; padding: 0 24px; color: #0f172a; }
+  h1 { font-size: 24px; }
+  p, li { line-height: 1.65; color: #334155; }
+  code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  pre  { background: #0f172a; color: #f1f5f9; padding: 16px; border-radius: 8px;
+         overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  .hint { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px;
+          border-radius: 4px; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>임베디드 위젯 데모</h1>
+<p>이 페이지는 <strong>외부 사이트</strong>에 위젯이 설치된 상황을 시뮬레이션합니다.
+   오른쪽 아래 챗 버블 버튼이 보이면 정상이며, 클릭하면 콜센터 위젯이 열립니다.</p>
+
+<h2>외부 사이트 설치 방법</h2>
+<p>HTML 어디에든 다음 한 줄을 추가하세요:</p>
+<pre>&lt;script src="/widget/loader.js" defer
+        data-color="#1d4ed8"
+        data-title="고객 지원"
+        data-greeting="무엇을 도와드릴까요?"
+        data-position="right"&gt;&lt;/script&gt;</pre>
+
+<h2>옵션</h2>
+<ul>
+  <li><code>data-color</code> — 브랜드 색상 (기본 <code>#1d4ed8</code>)</li>
+  <li><code>data-title</code> — 위젯 헤더 제목</li>
+  <li><code>data-greeting</code> — 시작 화면 인사말</li>
+  <li><code>data-position</code> — <code>right</code> 또는 <code>left</code> (기본 right)</li>
+</ul>
+
+<h2>JavaScript API (외부 사이트에서 제어)</h2>
+<pre>// 외부 사이트 코드에서 호출 가능
+aiCallcenter.open();    // 위젯 열기
+aiCallcenter.close();   // 닫기
+aiCallcenter.toggle();  // 토글
+
+// 위젯 이벤트 수신
+window.aiCallcenter = window.aiCallcenter || {};
+window.aiCallcenter.onMessage = function (e) {
+  // e.type: "ready" | "started" | "message" | "agent_reply" | "close"
+  console.log("위젯 이벤트", e);
+};</pre>
+
+<div class="hint">
+  ⓘ 위젯 iframe 안의 채팅은 콜센터 서버의 <code>/api/conversations</code> 등 기존 API
+  를 그대로 사용합니다. 외부 사이트에서 보면 같은 도메인이라 CORS 이슈 없음.
+</div>
+
+<!-- 실제 설치 한 줄 -->
+<script src="/widget/loader.js" defer
+        data-color="#1d4ed8"
+        data-title="고객 지원"
+        data-greeting="무엇을 도와드릴까요?"
+        data-position="right"></script>
+</body>
+</html>
