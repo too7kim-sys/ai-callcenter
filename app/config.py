@@ -47,6 +47,11 @@ SMTP_FROM = os.getenv("SMTP_FROM", "no-reply@ai-callcenter.local").strip() or "n
 # 비밀번호 재설정 링크의 기본 URL. 미설정 시 요청 URL을 사용한다.
 APP_BASE_URL = os.getenv("APP_BASE_URL", "").strip().rstrip("/")
 
+# --- 외부 알림 (Slack / Teams / Discord Incoming Webhook) ---
+# URL 을 설정하면 고위험 상담·에스컬레이션 등 중요 이벤트를 외부 채널로 푸시한다.
+# 빈 문자열이면 알림 모듈이 no-op 으로 동작.
+ALERT_WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL", "").strip()
+
 # 영업 시간 안내 (시:분, 24시간제). 평일 기준. 토/일 자동 안내.
 try:
     BUSINESS_START_HOUR = int(os.getenv("BUSINESS_START_HOUR", "9") or 9)

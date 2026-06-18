@@ -7,7 +7,7 @@ import tempfile
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from .. import ai, audit, auth, faq, knowledge, voice
+from .. import ai, audit, auth, faq, knowledge, notifier, voice
 from ..database import get_db
 from ..models import AgentUser, Conversation, ConversationNote, KnowledgeItem, Message, ReplyTemplate
 from ..permissions import P
@@ -301,6 +301,23 @@ def update_faq(
 
 _MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25MB
 _ALLOWED_AUDIO = {".wav", ".mp3", ".m4a", ".mp4", ".ogg", ".flac", ".webm"}
+
+
+@router.get("/alerts/status")
+def alerts_status(_user=Depends(auth.require_permission(P.AUDIT_VIEW))):
+    """외부 알림(Slack/Teams/Discord Webhook) 설정 상태."""
+    return {"configured": notifier.is_configured()}
+
+
+@router.post("/alerts/test")
+def alerts_test(
+    user=Depends(auth.require_permission(P.AUDIT_VIEW)),
+    db: Session = Depends(get_db),
+):
+    """관리자가 웹훅 URL 설정을 검증하기 위한 동기 테스트 발송."""
+    result = notifier.send_test()
+    audit.log(db, user, "alerts.test", details={"ok": result.get("ok")})
+    return result
 
 
 @router.get("/voice/status")

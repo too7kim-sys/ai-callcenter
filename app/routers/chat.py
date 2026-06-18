@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from datetime import datetime
 
-from .. import ai, config, knowledge
+from .. import ai, config, knowledge, notifier
 from ..database import get_db
 from ..models import Conversation, Message
 from ..schemas import (
@@ -88,6 +88,13 @@ def feedback_message(
             conv.status = "escalated"
             conv.updated_at = now()
             db.commit()
+            notifier.notify_escalation(
+                conversation_id=conv.id,
+                customer_name=conv.customer_name,
+                reason="고객 부정 피드백(👎)",
+                risk_level=conv.risk_level,
+                last_message=msg.content,
+            )
     return {"ok": True, "feedback": msg.feedback}
 
 
@@ -99,8 +106,9 @@ def request_agent(
 ):
     """고객이 명시적으로 '상담원 연결' 요청. 상태를 에스컬레이션으로 전환."""
     conv = get_conversation_or_404(db, conversation_id)
+    was_open = conv.status == "open"
     conv.agent_requested = True
-    if conv.status == "open":
+    if was_open:
         conv.status = "escalated"
     conv.updated_at = now()
     note = "(고객 상담원 연결 요청)"
@@ -110,6 +118,14 @@ def request_agent(
     db.add(sys_msg)
     db.commit()
     db.refresh(conv)
+    if was_open:
+        notifier.notify_escalation(
+            conversation_id=conv.id,
+            customer_name=conv.customer_name,
+            reason="고객이 상담원 연결을 요청",
+            risk_level=conv.risk_level,
+            last_message=payload.note.strip() or None,
+        )
     return serialize_conversation(conv, include_messages=True, db=db)
 
 
@@ -166,14 +182,30 @@ async def chat(conversation_id: int, payload: ChatRequest, db: Session = Depends
         sentiment_score=sentiment["score"],
     ))
     db.add(Message(conversation_id=conv.id, role="ai", content=reply["reply"]))
+    prev_status = conv.status
     conv.sentiment = sentiment["sentiment"]
     conv.sentiment_score = sentiment["score"]
     conv.risk_level = sentiment["risk_level"]
+    newly_escalated = (
+        sentiment["risk_level"] == "high"
+        and conv.status != "closed"
+        and prev_status != "escalated"
+    )
     if sentiment["risk_level"] == "high" and conv.status != "closed":
         conv.status = "escalated"
     conv.updated_at = now()
     db.commit()
     db.refresh(conv)
+
+    # 새로 고위험으로 전환된 경우에만 외부 알림 발송 (중복 방지)
+    if newly_escalated:
+        notifier.notify_escalation(
+            conversation_id=conv.id,
+            customer_name=conv.customer_name,
+            reason="AI 감정 분석에서 고위험 신호 감지",
+            risk_level="high",
+            last_message=message,
+        )
 
     return {
         "conversation": serialize_conversation(conv, include_messages=True),
