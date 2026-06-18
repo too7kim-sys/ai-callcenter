@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from .. import ai, audit, auth, faq, knowledge, notifier, voice
@@ -24,6 +24,7 @@ from ..schemas import (
 )
 from ..service import (
     build_history,
+    finalize_conversation,
     get_conversation_or_404,
     now,
     serialize_conversation,
@@ -145,20 +146,25 @@ def agent_reply(
 def update_status(
     conversation_id: int,
     payload: StatusRequest,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     _user=Depends(auth.require_permission(P.CONV_CLOSE)),
 ):
-    """상담 상태를 변경한다 (open / escalated / closed)."""
+    """상담 상태를 변경한다 (open / escalated / closed).
+
+    closed 로 전환되면 백그라운드에서 자동으로:
+      1) AI 요약·카테고리 분류 (이미 분석된 상담은 skip)
+      2) 상담원 답변을 RAG 지식 베이스에 학습
+    """
     if payload.status not in _STATUSES:
         raise HTTPException(status_code=400, detail="유효하지 않은 상태값입니다.")
     conv = get_conversation_or_404(db, conversation_id)
     conv.status = payload.status
     conv.updated_at = now()
     db.commit()
-    # 상담 종료 시, 상담원이 답변한 내용을 학습 지식으로 저장
-    if payload.status == "closed":
-        knowledge.learn_from_conversation(db, conv)
     db.refresh(conv)
+    if payload.status == "closed":
+        background.add_task(finalize_conversation, conv.id)
     return serialize_conversation(conv, include_messages=True)
 
 

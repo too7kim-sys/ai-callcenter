@@ -1,7 +1,7 @@
 """고객 채팅 API: 상담 생성, AI 챗봇 응답, 상담 조회."""
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from datetime import datetime
@@ -18,6 +18,7 @@ from ..schemas import (
 )
 from ..service import (
     build_history,
+    finalize_conversation,
     get_conversation_or_404,
     now,
     serialize_conversation,
@@ -133,9 +134,14 @@ def request_agent(
 def end_conversation(
     conversation_id: int,
     payload: CustomerEndRequest,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    """고객이 상담 종료 + (선택) 만족도 평가."""
+    """고객이 상담 종료 + (선택) 만족도 평가.
+
+    종료 직후 응답을 보낸 뒤, 백그라운드에서 AI 자동 요약·분류와 RAG 학습을
+    수행한다 (응답 지연 0). 다음 상담 자동 추천 품질이 시간이 갈수록 향상.
+    """
     conv = get_conversation_or_404(db, conversation_id)
     if payload.rating is not None:
         conv.customer_rating = payload.rating
@@ -144,9 +150,8 @@ def end_conversation(
     conv.status = "closed"
     conv.updated_at = now()
     db.commit()
-    # 종료 시 학습 (관리자/상담원의 close 와 동일한 흐름)
-    knowledge.learn_from_conversation(db, conv)
     db.refresh(conv)
+    background.add_task(finalize_conversation, conv.id)
     return serialize_conversation(conv, include_messages=True, db=db)
 
 
