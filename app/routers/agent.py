@@ -7,7 +7,7 @@ import tempfile
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session, selectinload
 
-from .. import ai, anomaly, audit, auth, faq, knowledge, masking, notifier, realtime, voice
+from .. import ai, anomaly, audit, auth, cache, faq, knowledge, masking, notifier, realtime, voice
 from ..database import get_db
 from ..models import AgentUser, Conversation, ConversationNote, KnowledgeItem, Message, ReplyTemplate
 from ..permissions import P
@@ -334,6 +334,27 @@ def alerts_test(
     result = notifier.send_test()
     audit.log(db, user, "alerts.test", details={"ok": result.get("ok")})
     return result
+
+
+@router.get("/admin/cache/stats")
+def cache_stats(_user=Depends(auth.require_permission(P.AUDIT_VIEW))):
+    """인메모리 캐시 통계 (대시보드 캐싱)."""
+    return cache.stats()
+
+
+@router.post("/admin/cache/clear")
+def cache_clear(
+    prefix: str | None = None,
+    user=Depends(auth.require_admin),
+    db: Session = Depends(get_db),
+):
+    """캐시 무효화. prefix 지정 시 일부만, 미지정 시 전체."""
+    if prefix:
+        removed = cache.invalidate_prefix(prefix)
+    else:
+        removed = cache.clear_all()
+    audit.log(db, user, "cache.clear", details={"prefix": prefix or "*", "removed": removed})
+    return {"ok": True, "removed": removed}
 
 
 @router.get("/security/anomaly")

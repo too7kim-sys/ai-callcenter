@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
-from .. import auth
+from .. import auth, cache
 from ..database import get_db
 from ..models import AgentUser, Conversation, KnowledgeItem, Message
 from ..permissions import P
+
+_TTL = 30  # 대시보드 캐시 TTL (초)
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
@@ -50,7 +52,18 @@ def dashboard(
     db: Session = Depends(get_db),
     user=Depends(auth.require_permission(P.CONV_VIEW)),
 ):
-    """오늘 한눈에 — 카운트·분포·상위 카테고리·내 담당."""
+    """오늘 한눈에 — 카운트·분포·상위 카테고리·내 담당.
+
+    '내 담당' 섹션이 사용자별이므로 캐시 키에 user.id 포함.
+    """
+    return cache.get_or_compute(
+        f"dashboard:home:{user.id}",
+        lambda: _compute_dashboard(db, user),
+        _TTL,
+    )
+
+
+def _compute_dashboard(db: Session, user):
     today = _today_start()
 
     total_today = db.query(func.count(Conversation.id)).filter(Conversation.created_at >= today).scalar() or 0
@@ -129,11 +142,16 @@ def dashboard_kpi(
     db: Session = Depends(get_db),
     _user=Depends(auth.require_permission(P.CONV_VIEW)),
 ):
-    """심화 KPI: AHT(평균 처리 시간) · FRT(평균 첫응답 시간) · FCR(1차 해결률) · 일별 추이.
-
-    days 는 1~90 사이로 클램프. 종료된 상담만 AHT/FRT 평균에 들어간다.
-    """
+    """심화 KPI — 모든 사용자에게 동일하므로 공유 캐시."""
     days = max(1, min(90, int(days)))
+    return cache.get_or_compute(
+        f"dashboard:kpi:{days}",
+        lambda: _compute_kpi(db, days),
+        _TTL,
+    )
+
+
+def _compute_kpi(db: Session, days: int):
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=days)
 
@@ -217,11 +235,16 @@ def dashboard_agents(
     db: Session = Depends(get_db),
     _user=Depends(auth.require_permission(P.CONV_VIEW)),
 ):
-    """상담원별 성과 리더보드 — 처리량·AHT·FRT·CSAT·에스컬레이션율.
-
-    days 는 1~365 사이로 클램프. 배정된 상담만 집계 대상.
-    """
+    """상담원별 성과 리더보드 (공유 캐시 — 모두 같은 윈도우)."""
     days = max(1, min(365, int(days)))
+    return cache.get_or_compute(
+        f"dashboard:agents:{days}",
+        lambda: _compute_agents(db, days),
+        _TTL,
+    )
+
+
+def _compute_agents(db: Session, days: int):
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
     # FRT 계산용 messages 미리 로드 (N+1 차단)
@@ -312,13 +335,17 @@ def dashboard_heatmap(
     db: Session = Depends(get_db),
     _user=Depends(auth.require_permission(P.CONV_VIEW)),
 ):
-    """요일 × 시간 트래픽 히트맵 — 인력 배치 데이터.
-
-    days       : 7~180 (기본 28일)
-    tz_offset_hours : DB UTC 시각에 더할 시차 (기본 +9, KST)
-    """
+    """요일 × 시간 트래픽 히트맵 — 인력 배치 데이터 (공유 캐시)."""
     days = max(7, min(180, int(days)))
     tz_offset_hours = max(-12, min(14, int(tz_offset_hours)))
+    return cache.get_or_compute(
+        f"dashboard:heatmap:{days}:{tz_offset_hours}",
+        lambda: _compute_heatmap(db, days, tz_offset_hours),
+        _TTL,
+    )
+
+
+def _compute_heatmap(db: Session, days: int, tz_offset_hours: int):
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
     convs = (
