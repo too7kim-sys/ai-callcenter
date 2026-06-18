@@ -443,6 +443,7 @@ async function startChat() {
   warmUpTts(); // iOS 등에서 사용자 제스처 내에 음성 엔진을 활성화
   $("msg-input").focus();
   startPolling();
+  startSse(conversationId);  // 상담원 답변·상태 변경 실시간 푸시 구독
 }
 
 async function sendMessage() {
@@ -485,14 +486,44 @@ async function sendMessage() {
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
-  // 상담원이 보낸 답변을 반영하기 위한 주기적 갱신
+  // SSE 가 푸시로 갱신 — 폴링은 SSE 연결 실패 시 안전망(30초)
+  const intervalMs = _sseActive ? 30000 : 4000;
   pollTimer = setInterval(async () => {
-    if (!conversationId || sending) return;  // 전송 중에는 폴링 정지(중복 방지)
+    if (!conversationId || sending) return;
     try {
       const res = await fetch(API + `/api/conversations/${conversationId}`);
       if (res.ok) renderConversation(await res.json());
     } catch (e) { /* 무시 */ }
-  }, 4000);
+  }, intervalMs);
+}
+
+// --- SSE 실시간 구독 (상담원 답변 즉시 반영) ---
+let _sse = null;
+let _sseActive = false;
+
+function startSse(convId) {
+  if (typeof EventSource === "undefined") return;
+  try { if (_sse) _sse.close(); } catch (_) {}
+  try {
+    _sse = new EventSource(API + `/api/events/stream?conversation_id=${convId}`);
+    _sse.addEventListener("open", () => {
+      _sseActive = true;
+      startPolling();  // 폴링 주기를 안전망 모드(30초)로 다시 세팅
+    });
+    const refresh = async () => {
+      if (sending || !conversationId) return;
+      try {
+        const res = await fetch(API + `/api/conversations/${conversationId}`);
+        if (res.ok) renderConversation(await res.json());
+      } catch (e) { /* 무시 */ }
+    };
+    _sse.addEventListener("message_created", refresh);
+    _sse.addEventListener("conversation_updated", refresh);
+    _sse.addEventListener("error", () => {
+      _sseActive = false;
+      startPolling();  // 폴링 주기를 빠른 모드(4초)로 복귀
+    });
+  } catch (e) { /* 미지원 — 기본 폴링 유지 */ }
 }
 
 // ===== 음성 상담 (Web Speech API + 서버 TTS) =====

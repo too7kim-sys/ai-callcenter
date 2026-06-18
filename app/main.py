@@ -13,6 +13,7 @@ from .routers import agent, chat, password
 from .routers import audit as audit_router
 from .routers import auth as auth_router
 from .routers import dashboard as dashboard_router
+from .routers import realtime as realtime_router
 from .routers import roles as roles_router
 from .routers import users as users_router
 
@@ -72,6 +73,7 @@ app.include_router(users_router.router)
 app.include_router(roles_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(audit_router.router)
+app.include_router(realtime_router.router)
 
 STATIC_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static"

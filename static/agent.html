@@ -574,8 +574,9 @@ async function selectConversation(id) {
   lastRenderedMsgIds = "";
   renderList();
   await loadDetail(true);
+  // SSE 가 푸시로 갱신해주므로 폴링은 fallback (실패 시 30초 간격) 으로 늦춤
   if (detailTimer) clearInterval(detailTimer);
-  detailTimer = setInterval(() => loadDetail(false), 4000);
+  detailTimer = setInterval(() => loadDetail(false), SSE_ACTIVE ? 30000 : 4000);
 }
 
 async function loadDetail(rebuild) {
@@ -1103,7 +1104,44 @@ async function bootstrap() {
   if (initConv) selectConversation(parseInt(initConv, 10));
 }
 document.addEventListener("auth-ready", bootstrap);
-listTimer = setInterval(loadList, 5000);
+
+// --- SSE 실시간 구독 (failover 폴링은 SSE 가용 시 60초 간격으로 늦춤) ---
+let SSE_ACTIVE = false;
+let _sse = null;
+
+function startSse() {
+  if (typeof EventSource === "undefined") return;
+  try {
+    _sse = new EventSource("/api/events/stream");
+    _sse.addEventListener("open", () => {
+      SSE_ACTIVE = true;
+      if (listTimer) clearInterval(listTimer);
+      listTimer = setInterval(loadList, 60000);  // SSE 살아 있는 동안은 안전망만
+    });
+    const refresh = (e) => {
+      let payload = {};
+      try { payload = JSON.parse(e.data || "{}"); } catch (_) {}
+      // 목록은 모든 이벤트에서 갱신 (에스컬레이션·새 상담 즉시 반영)
+      loadList();
+      // 현재 보고 있는 상담의 이벤트면 상세도 즉시 갱신
+      if (activeId && payload.conversation_id === activeId) {
+        loadDetail(false);
+      }
+    };
+    _sse.addEventListener("conversation_created", refresh);
+    _sse.addEventListener("conversation_updated", refresh);
+    _sse.addEventListener("message_created", refresh);
+    _sse.addEventListener("error", () => {
+      // 연결 끊김 — EventSource 가 자동 재시도. 그동안 폴링 빠르게 복귀
+      SSE_ACTIVE = false;
+      if (listTimer) clearInterval(listTimer);
+      listTimer = setInterval(loadList, 5000);
+    });
+  } catch (e) { /* SSE 미지원 — 기본 폴링 유지 */ }
+}
+
+listTimer = setInterval(loadList, 5000);  // SSE 연결 전까지 폴링 유지
+startSse();
 </script>
 </body>
 </html>

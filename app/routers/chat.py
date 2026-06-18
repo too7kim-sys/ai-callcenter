@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from datetime import datetime
 
-from .. import ai, config, knowledge, notifier, ratelimit, tts
+from .. import ai, config, knowledge, notifier, ratelimit, realtime, tts
 from ..database import get_db
 from ..models import Conversation, Message
 from ..schemas import (
@@ -47,6 +47,7 @@ def create_conversation(payload: ConversationCreate, db: Session = Depends(get_d
     db.add(conv)
     db.commit()
     db.refresh(conv)
+    realtime.conversation_created(conv.id)
     return serialize_conversation(conv, include_messages=True)
 
 
@@ -163,6 +164,8 @@ def request_agent(
     db.add(sys_msg)
     db.commit()
     db.refresh(conv)
+    realtime.conversation_updated(conv.id, status=conv.status, reason="agent_requested")
+    realtime.message_created(conv.id, "ai")
     if was_open:
         notifier.notify_escalation(
             conversation_id=conv.id,
@@ -195,6 +198,7 @@ def end_conversation(
     conv.updated_at = now()
     db.commit()
     db.refresh(conv)
+    realtime.conversation_updated(conv.id, status="closed", reason="customer_end")
     background.add_task(finalize_conversation, conv.id)
     return serialize_conversation(conv, include_messages=True, db=db)
 
@@ -248,6 +252,11 @@ async def chat(conversation_id: int, payload: ChatRequest, db: Session = Depends
     conv.updated_at = now()
     db.commit()
     db.refresh(conv)
+
+    realtime.message_created(conv.id, "customer")
+    realtime.message_created(conv.id, "ai")
+    if newly_escalated:
+        realtime.conversation_updated(conv.id, status="escalated", reason="risk_high")
 
     # 새로 고위험으로 전환된 경우에만 외부 알림 발송 (중복 방지)
     if newly_escalated:

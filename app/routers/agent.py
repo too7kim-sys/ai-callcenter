@@ -7,7 +7,7 @@ import tempfile
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from .. import ai, audit, auth, faq, knowledge, notifier, voice
+from .. import ai, audit, auth, faq, knowledge, notifier, realtime, voice
 from ..database import get_db
 from ..models import AgentUser, Conversation, ConversationNote, KnowledgeItem, Message, ReplyTemplate
 from ..permissions import P
@@ -77,6 +77,7 @@ def assign_conversation(
     audit.log(db, user, "conversation.assign",
               target_type="conversation", target_id=conv.id,
               details={"assigned_to": conv.assigned_agent_id})
+    realtime.conversation_updated(conv.id, reason="assigned", agent_id=conv.assigned_agent_id)
     return serialize_conversation(conv, include_messages=True, db=db)
 
 
@@ -139,6 +140,7 @@ def agent_reply(
     conv.updated_at = now()
     db.commit()
     db.refresh(conv)
+    realtime.message_created(conv.id, "agent")
     return serialize_conversation(conv, include_messages=True)
 
 
@@ -163,6 +165,7 @@ def update_status(
     conv.updated_at = now()
     db.commit()
     db.refresh(conv)
+    realtime.conversation_updated(conv.id, status=conv.status, reason="status_change")
     if payload.status == "closed":
         background.add_task(finalize_conversation, conv.id)
     return serialize_conversation(conv, include_messages=True)
