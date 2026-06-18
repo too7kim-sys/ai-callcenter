@@ -4,7 +4,7 @@ from datetime import datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .. import auth
 from ..database import get_db
@@ -137,8 +137,12 @@ def dashboard_kpi(
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=days)
 
+    # FRT 계산에 c.messages 가 필요 — selectinload 로 N+1 차단 (단일 IN 쿼리)
     convs_in_window = (
-        db.query(Conversation).filter(Conversation.created_at >= since).all()
+        db.query(Conversation)
+        .options(selectinload(Conversation.messages))
+        .filter(Conversation.created_at >= since)
+        .all()
     )
     closed = [c for c in convs_in_window if c.status == "closed"]
 
@@ -220,10 +224,16 @@ def dashboard_agents(
     days = max(1, min(365, int(days)))
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    convs = db.query(Conversation).filter(
-        Conversation.created_at >= since,
-        Conversation.assigned_agent_id.isnot(None),
-    ).all()
+    # FRT 계산용 messages 미리 로드 (N+1 차단)
+    convs = (
+        db.query(Conversation)
+        .options(selectinload(Conversation.messages))
+        .filter(
+            Conversation.created_at >= since,
+            Conversation.assigned_agent_id.isnot(None),
+        )
+        .all()
+    )
 
     # 에이전트 역할 메시지 수 (별도 쿼리)
     msg_rows = (
@@ -263,9 +273,17 @@ def dashboard_agents(
     def avg(values):
         return round(sum(values) / len(values)) if values else None
 
+    # 상담원 정보를 한 번에 로드 (N+1 제거)
+    agent_ids = list(per_agent.keys())
+    users_rows = (
+        db.query(AgentUser).filter(AgentUser.id.in_(agent_ids)).all()
+        if agent_ids else []
+    )
+    user_by_id = {u.id: u for u in users_rows}
+
     result = []
     for aid, d in per_agent.items():
-        u = db.get(AgentUser, aid)
+        u = user_by_id.get(aid)
         result.append({
             "user_id": aid,
             "username": u.username if u else "(삭제됨)",

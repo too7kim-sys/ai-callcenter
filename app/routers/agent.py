@@ -5,7 +5,7 @@ import os
 import tempfile
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .. import ai, anomaly, audit, auth, faq, knowledge, masking, notifier, realtime, voice
 from ..database import get_db
@@ -26,6 +26,7 @@ from ..service import (
     build_history,
     finalize_conversation,
     get_conversation_or_404,
+    load_agent_map,
     now,
     serialize_conversation,
 )
@@ -48,12 +49,18 @@ def list_conversations(
       mine=true        — 내가 담당으로 배정된 것만
       unassigned=true  — 미배정만 (긴급 처리 큐)
     """
-    q = db.query(Conversation).order_by(Conversation.updated_at.desc())
+    q = (
+        db.query(Conversation)
+        .options(selectinload(Conversation.messages))
+        .order_by(Conversation.updated_at.desc())
+    )
     if mine:
         q = q.filter(Conversation.assigned_agent_id == user.id)
     if unassigned:
         q = q.filter(Conversation.assigned_agent_id.is_(None))
-    return [serialize_conversation(c, db=db) for c in q.all()]
+    convs = q.all()
+    agent_map = load_agent_map(db, convs)
+    return [serialize_conversation(c, agent_map=agent_map) for c in convs]
 
 
 @router.post("/conversations/{conversation_id}/assign")

@@ -98,7 +98,12 @@ def serialize_message(message):
     }
 
 
-def serialize_conversation(conv, include_messages=False, db=None):
+def serialize_conversation(conv, include_messages=False, db=None, agent_map=None):
+    """대화 직렬화.
+
+    agent_map: {agent_id: AgentUser} — 목록 직렬화 시 미리 채워 두면 N+1 제거.
+               미제공 시 db 가 주어지면 단건 조회 (단일 conv 시 충분).
+    """
     messages = list(conv.messages)
     data = {
         "id": conv.id,
@@ -122,12 +127,27 @@ def serialize_conversation(conv, include_messages=False, db=None):
         "message_count": len(messages),
         "last_message": messages[-1].content if messages else None,
     }
-    # 배정 상담원 이름 조회 (있을 때만)
-    if db is not None and data["assigned_agent_id"]:
-        from .models import AgentUser
-        u = db.get(AgentUser, data["assigned_agent_id"])
-        if u:
-            data["assigned_agent_name"] = u.name or u.username
+    aid = data["assigned_agent_id"]
+    if aid:
+        if agent_map is not None:
+            u = agent_map.get(aid)
+            if u:
+                data["assigned_agent_name"] = u.name or u.username
+        elif db is not None:
+            from .models import AgentUser
+            u = db.get(AgentUser, aid)
+            if u:
+                data["assigned_agent_name"] = u.name or u.username
     if include_messages:
         data["messages"] = [serialize_message(m) for m in messages]
     return data
+
+
+def load_agent_map(db, conversations):
+    """배정된 상담원들을 한 번에 로드해 {id: AgentUser} 반환 — N+1 제거용."""
+    from .models import AgentUser
+    ids = {c.assigned_agent_id for c in conversations if c.assigned_agent_id}
+    if not ids:
+        return {}
+    rows = db.query(AgentUser).filter(AgentUser.id.in_(ids)).all()
+    return {u.id: u for u in rows}

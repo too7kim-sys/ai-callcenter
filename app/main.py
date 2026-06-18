@@ -23,14 +23,34 @@ log = logging.getLogger("ai_callcenter.main")
 
 
 def _ensure_columns():
-    """기존 DB(이전 버전)에 새로 추가된 컬럼이 없을 때만 ALTER TABLE 로 보강.
+    """기존 DB(이전 버전)에 새로 추가된 컬럼·인덱스가 없을 때만 ALTER/CREATE.
 
-    SQLAlchemy `create_all` 은 누락된 테이블만 생성하고 기존 테이블에 컬럼은
-    추가하지 않으므로, 모델에 신규 컬럼이 추가되면 기존 DB는 호환되지 않는다.
+    SQLAlchemy `create_all` 은 누락된 테이블만 생성하고 기존 테이블의 컬럼·
+    인덱스는 건드리지 않으므로, 모델 변경 시 기존 DB 는 호환되지 않는다.
     여기서는 SQLite 기준으로 가벼운 마이그레이션을 수행한다.
     """
     from sqlalchemy import inspect, text
     insp = inspect(engine)
+
+    # 인덱스 — 대시보드/목록의 created_at·status 필터가 핫패스
+    indexes = [
+        ("conversations", "ix_conversations_status",     "status"),
+        ("conversations", "ix_conversations_created_at", "created_at"),
+        ("conversations", "ix_conversations_updated_at", "updated_at"),
+        ("messages",      "ix_messages_created_at",      "created_at"),
+    ]
+    for table, idx_name, column in indexes:
+        if table not in insp.get_table_names():
+            continue
+        existing = {i["name"] for i in insp.get_indexes(table)}
+        if idx_name in existing:
+            continue
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table} ({column})"))
+            log.info("마이그레이션: 인덱스 %s 추가", idx_name)
+        except Exception as e:
+            log.warning("인덱스 추가 실패 (%s): %s", idx_name, e)
     expected = {
         "conversations": [
             ("assigned_agent_id", "INTEGER"),

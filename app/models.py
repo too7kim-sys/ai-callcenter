@@ -17,7 +17,7 @@ class Conversation(Base):
     id = Column(Integer, primary_key=True, index=True)
     customer_name = Column(String, default="고객")
     channel = Column(String, default="chat")  # chat / call
-    status = Column(String, default="open")   # open / escalated / closed
+    status = Column(String, default="open", index=True)   # open / escalated / closed
 
     # 상담 요약·분류 결과
     category = Column(String, nullable=True)
@@ -36,8 +36,8 @@ class Conversation(Base):
     customer_rating = Column(Integer, nullable=True)  # 1~5
     customer_feedback = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=_now)
-    updated_at = Column(DateTime, default=_now, onupdate=_now)
+    created_at = Column(DateTime, default=_now, index=True)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, index=True)
 
     messages = relationship(
         "Message",
@@ -62,7 +62,7 @@ class Message(Base):
     # 고객의 메시지 평가 (AI·상담원 답변에만 의미 있음): up / down / null
     feedback = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=_now)
+    created_at = Column(DateTime, default=_now, index=True)
 
     conversation = relationship("Conversation", back_populates="messages")
 
