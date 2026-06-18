@@ -285,3 +285,57 @@ def dashboard_agents(
     # 정렬: 종료 건수 내림차순 → 동수면 CSAT 내림차순
     result.sort(key=lambda r: (r["closed_count"], r["csat_avg"] or 0), reverse=True)
     return {"window_days": days, "agents": result}
+
+
+@router.get("/dashboard/heatmap")
+def dashboard_heatmap(
+    days: int = 28,
+    tz_offset_hours: int = 9,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.CONV_VIEW)),
+):
+    """요일 × 시간 트래픽 히트맵 — 인력 배치 데이터.
+
+    days       : 7~180 (기본 28일)
+    tz_offset_hours : DB UTC 시각에 더할 시차 (기본 +9, KST)
+    """
+    days = max(7, min(180, int(days)))
+    tz_offset_hours = max(-12, min(14, int(tz_offset_hours)))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    convs = (
+        db.query(Conversation.created_at)
+        .filter(Conversation.created_at >= since)
+        .all()
+    )
+
+    offset = timedelta(hours=tz_offset_hours)
+    counts: dict[tuple[int, int], int] = {}
+    for (created_at,) in convs:
+        if created_at is None:
+            continue
+        local = _naive(created_at) + offset
+        key = (local.weekday(), local.hour)
+        counts[key] = counts.get(key, 0) + 1
+
+    max_count = max(counts.values()) if counts else 0
+    cells = [
+        {"weekday": w, "hour": h, "count": counts.get((w, h), 0)}
+        for w in range(7) for h in range(24)
+    ]
+    # 시간대별 합계 (인력 배치용 1차원 요약)
+    by_hour = [0] * 24
+    by_weekday = [0] * 7
+    for (w, h), n in counts.items():
+        by_hour[h] += n
+        by_weekday[w] += n
+
+    return {
+        "window_days": days,
+        "tz_offset_hours": tz_offset_hours,
+        "max_count": max_count,
+        "total": sum(counts.values()),
+        "cells": cells,
+        "by_hour": by_hour,
+        "by_weekday": by_weekday,
+    }

@@ -103,6 +103,22 @@
     color: var(--c-text-muted);
   }
   .period-toggle button.active { background: var(--c-brand-700); color: white; border-color: var(--c-brand-700); }
+
+  /* 시간대 히트맵 */
+  .heatmap-wrap { overflow-x: auto; }
+  .heatmap { font-size: 11px; color: var(--c-text-muted); }
+  .heatmap .cell { stroke: #fff; stroke-width: 1.5; cursor: pointer; }
+  .heatmap .cell:hover { stroke: var(--c-text); stroke-width: 2; }
+  .heatmap .label { font-size: 10px; fill: var(--c-text-muted); }
+  .heatmap-legend {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--c-text-muted);
+    margin-top: 8px;
+  }
+  .heatmap-legend .gradient {
+    flex: 1; max-width: 160px; height: 10px; border-radius: 4px;
+    background: linear-gradient(90deg, #f1f5f9 0%, #1d4ed8 100%);
+  }
 </style>
 <script src="/assets/pwa.js" defer></script>
 </head>
@@ -133,6 +149,22 @@
     </div>
     <div class="card-body">
       <svg class="trend-chart" id="trend-chart" viewBox="0 0 700 200" preserveAspectRatio="none" aria-label="일별 상담 건수 추이"></svg>
+    </div>
+  </section>
+
+  <!-- 시간대 히트맵 (요일 × 시간) -->
+  <section class="card" style="margin-bottom: var(--space-5);">
+    <div class="card-head">
+      <div class="title">시간대 트래픽 (KST · 최근 28일)</div>
+      <div class="sub" id="heatmap-meta" style="font-size: var(--text-xs); color: var(--c-text-muted);"></div>
+    </div>
+    <div class="card-body heatmap-wrap">
+      <svg class="heatmap" id="heatmap" viewBox="0 0 760 200" preserveAspectRatio="xMinYMid meet" aria-label="요일×시간 상담 건수 히트맵"></svg>
+      <div class="heatmap-legend">
+        <span>적음</span>
+        <div class="gradient"></div>
+        <span id="heatmap-max">많음</span>
+      </div>
     </div>
   </section>
 
@@ -340,6 +372,61 @@ function renderTrendChart(trend) {
   svg.innerHTML = html;
 }
 
+// --- 시간대 히트맵 (요일 × 시간) ---
+const WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"];
+
+async function loadHeatmap() {
+  let h;
+  try { h = await (await fetch("/api/dashboard/heatmap?days=28&tz_offset_hours=9")).json(); }
+  catch (e) { return; }
+  renderHeatmap(h);
+  $("heatmap-meta").textContent =
+    `최근 ${h.window_days}일 · 총 ${h.total}건 · 피크 ${h.max_count}건/시간대`;
+  $("heatmap-max").textContent = `많음 (${h.max_count})`;
+}
+
+function renderHeatmap(data) {
+  const svg = $("heatmap");
+  const cells = data.cells || [];
+  const maxV = data.max_count || 1;
+
+  // 레이아웃 계산
+  const padL = 36, padT = 22, padR = 12, padB = 14;
+  const cellW = (760 - padL - padR) / 24;
+  const cellH = (200 - padT - padB) / 7;
+
+  // 색상 보간 (cool→brand)
+  function color(v) {
+    if (v === 0) return "#f8fafc";
+    const t = Math.min(1, v / maxV);
+    // #f1f5f9 → #1d4ed8
+    const lerp = (a, b) => Math.round(a + (b - a) * t);
+    const r = lerp(241, 29), g = lerp(245, 78), b = lerp(249, 216);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  let html = "";
+  // 시간 라벨 (위)
+  for (let h = 0; h < 24; h += 3) {
+    const x = padL + h * cellW + cellW / 2;
+    html += `<text class="label" x="${x}" y="${padT - 6}" text-anchor="middle">${h}</text>`;
+  }
+  // 요일 라벨 (왼쪽)
+  for (let w = 0; w < 7; w++) {
+    const y = padT + w * cellH + cellH / 2 + 3;
+    html += `<text class="label" x="${padL - 6}" y="${y}" text-anchor="end">${WEEKDAY_KO[w]}</text>`;
+  }
+  // 셀
+  for (const c of cells) {
+    const x = padL + c.hour * cellW;
+    const y = padT + c.weekday * cellH;
+    html += `<rect class="cell" x="${x}" y="${y}" width="${cellW}" height="${cellH}" fill="${color(c.count)}" rx="2">` +
+            `<title>${WEEKDAY_KO[c.weekday]} ${String(c.hour).padStart(2,'0')}:00 — ${c.count}건</title>` +
+            `</rect>`;
+  }
+  svg.innerHTML = html;
+}
+
 // --- 상담원 성과 리더보드 ---
 let agentsDays = 30;
 
@@ -404,7 +491,7 @@ $("agents-period").addEventListener("click", (e) => {
   loadAgents();
 });
 
-$("refresh-btn").addEventListener("click", () => { load(); loadKpi(); loadAgents(); });
+$("refresh-btn").addEventListener("click", () => { load(); loadKpi(); loadAgents(); loadHeatmap(); });
 document.addEventListener("auth-ready", (e) => {
   const user = e.detail;
   const perms = user?.permissions || [];
@@ -414,6 +501,7 @@ document.addEventListener("auth-ready", (e) => {
   load();
   loadKpi();
   loadAgents();
+  loadHeatmap();
 });
 </script>
 </body>
