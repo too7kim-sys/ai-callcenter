@@ -61,6 +61,23 @@
     font-size: var(--text-base);
   }
   .top-cat:last-child { border-bottom: none; }
+
+  /* KPI */
+  .kpi-card .num    { font-size: var(--text-3xl); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+  .kpi-card .label  { font-size: var(--text-xs); color: var(--c-text-muted); text-transform: uppercase; letter-spacing: .04em; font-weight: var(--fw-semibold); }
+  .kpi-card .sub    { font-size: var(--text-xs); color: var(--c-text-faint); margin-top: 6px; }
+  .kpi-card.good .num    { color: var(--c-success); }
+  .kpi-card.warn .num    { color: var(--c-warning); }
+  .kpi-card.bad  .num    { color: var(--c-danger); }
+  .kpi-card.muted .num   { color: var(--c-text-muted); }
+
+  .trend-chart { width: 100%; height: 200px; }
+  .trend-chart .axis    { stroke: var(--c-surface-alt); stroke-width: 1; }
+  .trend-chart .grid    { stroke: var(--c-surface-alt); stroke-width: 1; stroke-dasharray: 3 3; }
+  .trend-chart .area-c  { fill: var(--c-brand-700); fill-opacity: .08; }
+  .trend-chart .line-c  { stroke: var(--c-brand-700); stroke-width: 2; fill: none; }
+  .trend-chart .dot-c   { fill: var(--c-brand-700); }
+  .trend-chart .axis-text { font-size: 10px; fill: var(--c-text-muted); }
 </style>
 </head>
 <body>
@@ -80,6 +97,18 @@
 <div class="page-container">
   <!-- 상단 큰 숫자 카드 -->
   <div class="grid" id="top-grid"></div>
+
+  <!-- KPI 카드 + 7일 추이 -->
+  <div class="grid" id="kpi-grid"></div>
+  <section class="card" style="margin-bottom: var(--space-5);">
+    <div class="card-head">
+      <div class="title">최근 7일 상담 추이</div>
+      <div class="sub" id="trend-meta" style="font-size: var(--text-xs); color: var(--c-text-muted);"></div>
+    </div>
+    <div class="card-body">
+      <svg class="trend-chart" id="trend-chart" viewBox="0 0 700 200" preserveAspectRatio="none" aria-label="일별 상담 건수 추이"></svg>
+    </div>
+  </section>
 
   <!-- 분포 카드들 -->
   <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));">
@@ -171,7 +200,106 @@ function renderBars(data, labels = {}, classes = {}) {
     }).join("");
 }
 
-$("refresh-btn").addEventListener("click", load);
+// --- KPI (AHT / FRT / FCR / 에스컬레이션율) + 7일 추이 ---
+function fmtDuration(secs) {
+  if (secs == null) return "—";
+  if (secs < 60) return `${secs}초`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}분 ${secs % 60}초`;
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  return `${h}시간 ${m}분`;
+}
+function fmtPct(rate) {
+  return rate == null ? "—" : `${Math.round(rate * 100)}%`;
+}
+function tone(condition, good, bad) {
+  return condition == null ? "muted" : (condition ? good : bad);
+}
+
+async function loadKpi() {
+  let k;
+  try { k = await (await fetch("/api/dashboard/kpi?days=7")).json(); }
+  catch (e) { return; }
+
+  const cards = [
+    {
+      label: "평균 처리 시간 (AHT)", num: fmtDuration(k.aht_seconds),
+      sub: `종료 ${k.sample_size_closed}건`,
+      cls: tone(k.aht_seconds != null && k.aht_seconds < 600, "good", "warn"),
+    },
+    {
+      label: "평균 첫응답 시간 (FRT)", num: fmtDuration(k.frt_seconds),
+      sub: "고객 메시지 → 첫 응답",
+      cls: tone(k.frt_seconds != null && k.frt_seconds < 60, "good", "warn"),
+    },
+    {
+      label: "1차 해결률 (FCR)", num: fmtPct(k.fcr_rate),
+      sub: "에스컬레이션 없이 종료",
+      cls: tone(k.fcr_rate != null && k.fcr_rate >= 0.7, "good", "bad"),
+    },
+    {
+      label: "에스컬레이션율", num: fmtPct(k.escalation_rate),
+      sub: `전체 ${k.sample_size_total}건 중`,
+      cls: tone(k.escalation_rate != null && k.escalation_rate < 0.2, "good", "bad"),
+    },
+  ];
+  $("kpi-grid").innerHTML = cards.map((c) => `
+    <div class="card kpi-card ${c.cls}">
+      <div class="card-body">
+        <div class="label">${UI.escapeHtml(c.label)}</div>
+        <div class="num">${UI.escapeHtml(String(c.num))}</div>
+        <div class="sub">${UI.escapeHtml(c.sub || '')}</div>
+      </div>
+    </div>`).join("");
+
+  renderTrendChart(k.trend);
+  $("trend-meta").textContent =
+    `최근 ${k.window_days}일 · 전체 ${k.sample_size_total}건 · 종료 ${k.sample_size_closed}건`;
+}
+
+function renderTrendChart(trend) {
+  const svg = $("trend-chart");
+  if (!trend || !trend.length) {
+    svg.innerHTML = `<text x="350" y="100" text-anchor="middle" class="axis-text">데이터 없음</text>`;
+    return;
+  }
+  const W = 700, H = 200, PAD_L = 36, PAD_R = 12, PAD_T = 12, PAD_B = 28;
+  const innerW = W - PAD_L - PAD_R, innerH = H - PAD_T - PAD_B;
+  const maxY = Math.max(1, ...trend.map((d) => d.conversations));
+  const stepX = trend.length > 1 ? innerW / (trend.length - 1) : 0;
+
+  const x = (i) => PAD_L + i * stepX;
+  const y = (v) => PAD_T + innerH - (v / maxY) * innerH;
+
+  const linePts = trend.map((d, i) => `${x(i)},${y(d.conversations)}`).join(" ");
+  const areaPts = `${PAD_L},${PAD_T + innerH} ${linePts} ${x(trend.length - 1)},${PAD_T + innerH}`;
+
+  // Y 축 눈금 (0, max/2, max)
+  const yTicks = [0, Math.round(maxY / 2), maxY].filter((v, i, a) => a.indexOf(v) === i);
+
+  let html = "";
+  // 그리드 + Y 라벨
+  yTicks.forEach((v) => {
+    const yy = y(v);
+    html += `<line class="grid" x1="${PAD_L}" y1="${yy}" x2="${W - PAD_R}" y2="${yy}" />`;
+    html += `<text class="axis-text" x="${PAD_L - 6}" y="${yy + 3}" text-anchor="end">${v}</text>`;
+  });
+  // X 라벨 (요일·일)
+  trend.forEach((d, i) => {
+    if (trend.length > 14 && i % 2 !== 0) return; // 너무 빽빽하면 격일
+    const dd = new Date(d.date);
+    const label = `${dd.getMonth() + 1}/${dd.getDate()}`;
+    html += `<text class="axis-text" x="${x(i)}" y="${H - PAD_B + 14}" text-anchor="middle">${label}</text>`;
+  });
+  html += `<polygon class="area-c" points="${areaPts}" />`;
+  html += `<polyline class="line-c" points="${linePts}" />`;
+  trend.forEach((d, i) => {
+    html += `<circle class="dot-c" cx="${x(i)}" cy="${y(d.conversations)}" r="3"><title>${d.date}: ${d.conversations}건 (종료 ${d.closed}건, AHT ${fmtDuration(d.aht_seconds)})</title></circle>`;
+  });
+  svg.innerHTML = html;
+}
+
+$("refresh-btn").addEventListener("click", () => { load(); loadKpi(); });
 document.addEventListener("auth-ready", (e) => {
   const user = e.detail;
   const perms = user?.permissions || [];
@@ -179,6 +307,7 @@ document.addEventListener("auth-ready", (e) => {
     document.getElementById("export-btn").classList.remove("hidden");
   }
   load();
+  loadKpi();
 });
 </script>
 </body>
