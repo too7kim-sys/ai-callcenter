@@ -12,7 +12,7 @@ import time
 from . import accounts, ai, auth, backup, config, faq, metrics
 from .database import Base, engine
 from .security_headers import SecurityHeadersMiddleware
-from .routers import agent, callback, categories, chat, experiments, password
+from .routers import agent, callback, categories, chat, evaluations, experiments, password
 from .routers import audit as audit_router
 from .routers import auth as auth_router
 from .routers import dashboard as dashboard_router
@@ -121,6 +121,7 @@ app.include_router(realtime_router.router)
 app.include_router(callback.router)
 app.include_router(categories.router)
 app.include_router(experiments.router)
+app.include_router(evaluations.router)
 
 STATIC_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static"

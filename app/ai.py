@@ -108,6 +108,19 @@ FAQ 지식베이스:
 {faq}
 """
 
+SYSTEM_EVALUATE = """당신은 AI 콜센터 답변 품질의 검수자입니다.
+[고객 문의] 와 [AI 답변] 을 보고 아래 JSON 형식으로만 평가해 주세요.
+JSON 외의 텍스트는 절대 출력하지 마세요.
+
+{"helpfulness": <1-5>, "accuracy": <1-5>, "tone": <1-5>, "reasoning": "<한 문장>"}
+
+평가 기준 (각 1~5):
+- helpfulness: 고객 문의를 실질적으로 해결/안내했는가
+- accuracy   : FAQ·사실에 부합하는가 (확실치 않은 내용을 단정하지 않았는가)
+- tone       : 한국어 존댓말, 공감·친절한 어조인가
+"""
+
+
 SYSTEM_SENTIMENT = """당신은 고객 메시지의 감정을 분석하는 시스템입니다.
 아래 JSON 형식으로만 응답하세요. JSON 외의 텍스트는 절대 출력하지 마세요.
 
@@ -197,6 +210,80 @@ def generate_reply(history, past_cases=None, variant: str | None = None):
         except Exception as exc:
             logger.warning("generate_reply: 모의 응답으로 폴백 (%s)", exc)
     return {"reply": _mock_reply(history, past_cases), "source": "mock", "variant": label}
+
+
+def evaluate_reply(customer_message: str, ai_reply: str) -> dict:
+    """AI 답변 품질 자동 평가 (LLM-as-judge).
+
+    반환: {helpfulness, accuracy, tone (각 1~5), reasoning, source}
+    Claude/Ollama 가 가능하면 실제 LLM 으로 채점, 아니면 휴리스틱 모의 채점.
+    """
+    provider = _resolve_provider()
+    if provider != "mock" and customer_message and ai_reply:
+        try:
+            user_msg = (
+                f"[고객 문의]\n{customer_message}\n\n"
+                f"[AI 답변]\n{ai_reply}"
+            )
+            raw = _complete(
+                provider,
+                SYSTEM_EVALUATE,
+                [{"role": "user", "content": user_msg}],
+                max_tokens=200,
+                want_json=True,
+            )
+            data = _extract_json(raw) or {}
+            return _normalize_eval(data, source=provider)
+        except Exception as exc:
+            logger.warning("evaluate_reply: 모의 채점으로 폴백 (%s)", exc)
+    return _mock_evaluate(customer_message, ai_reply)
+
+
+def _normalize_eval(data: dict, source: str) -> dict:
+    def clamp(v):
+        try:
+            n = int(round(float(v)))
+        except (TypeError, ValueError):
+            n = 3
+        return max(1, min(5, n))
+    return {
+        "helpfulness": clamp(data.get("helpfulness", 3)),
+        "accuracy":    clamp(data.get("accuracy", 3)),
+        "tone":        clamp(data.get("tone", 3)),
+        "reasoning":   (str(data.get("reasoning", "") or ""))[:300],
+        "source":      source,
+    }
+
+
+def _mock_evaluate(customer_message: str, ai_reply: str) -> dict:
+    """간단한 휴리스틱 — Claude/Ollama 없을 때 점수 비슷하게 흉내."""
+    if not ai_reply:
+        return {"helpfulness": 1, "accuracy": 1, "tone": 1,
+                "reasoning": "빈 답변", "source": "mock"}
+    reply = ai_reply.strip()
+    helpfulness = 3
+    if len(reply) >= 30: helpfulness += 1
+    if len(reply) >= 80: helpfulness += 1
+    # 회피·모르겠음·일반론은 감점
+    if "정확히" not in reply and any(s in reply for s in ["잘 모르겠", "확인이 필요", "추후"]):
+        helpfulness -= 1
+
+    accuracy = 4 if any(s in reply for s in ["FAQ", "안내", "가능합니다"]) else 3
+    if "확실하지" in reply or "추측" in reply:
+        accuracy -= 1
+
+    tone = 3
+    if any(s in reply for s in ["감사", "도와", "이해합니다", "불편"]): tone += 1
+    if reply.endswith(("니다.", "니다", "요.", "요")): tone += 1
+
+    helpfulness = max(1, min(5, helpfulness))
+    accuracy    = max(1, min(5, accuracy))
+    tone        = max(1, min(5, tone))
+    return {
+        "helpfulness": helpfulness, "accuracy": accuracy, "tone": tone,
+        "reasoning": "휴리스틱 채점 (길이/표현 기반)",
+        "source": "mock",
+    }
 
 
 def analyze_sentiment(text):

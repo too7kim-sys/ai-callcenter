@@ -210,6 +210,27 @@ class RolePermission(Base):
     created_at = Column(DateTime, default=_now)
 
 
+class MessageEvaluation(Base):
+    """AI 답변 품질 자동 평가 (LLM-as-judge).
+
+    각 AI 답변(Message.role='ai')에 대해 도움성/정확성/어조를 1~5점으로 채점.
+    평가는 수동 또는 백그라운드 잡으로 트리거된다.
+    """
+
+    __tablename__ = "message_evaluations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(Integer, ForeignKey("messages.id"), unique=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), index=True)
+    helpfulness = Column(Integer)   # 1~5: 고객 문의를 얼마나 도왔는가
+    accuracy = Column(Integer)      # 1~5: FAQ/사실에 부합하는가
+    tone = Column(Integer)          # 1~5: 친절·공감·존댓말
+    reasoning = Column(Text)        # 한 줄 설명
+    variant = Column(String, nullable=True, index=True)  # A/B (있을 때)
+    source = Column(String)         # claude/ollama/mock
+    created_at = Column(DateTime, default=_now, index=True)
+
+
 class Callback(Base):
     """고객 콜백 요청 — 영업 시간 외 / 즉시 연결 불가 시 예약.
 
