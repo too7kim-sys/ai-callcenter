@@ -7,6 +7,7 @@
   const NAV_ITEMS = [
     { key: "dashboard",   href: "/dashboard",   label: "대시보드",    perm: "conversation.view" },
     { key: "agent",       href: "/agent",       label: "상담 콘솔",  perm: "conversation.view" },
+    { key: "callbacks",   href: "/callbacks",   label: "콜백 큐",     perm: "callback.manage" },
     { key: "faq",         href: "/faq",         label: "FAQ",         perm: "faq.view" },
     { key: "knowledge",   href: "/knowledge",   label: "학습 데이터", perm: "knowledge.view" },
     { key: "templates",   href: "/templates",   label: "답변 템플릿", perm: "conversation.reply" },

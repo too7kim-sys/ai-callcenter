@@ -75,6 +75,19 @@ class TtsRequest(BaseModel):
     voice: str | None = Field(default=None, max_length=64)
 
 
+class CallbackCreate(BaseModel):
+    customer_name: str | None = Field(default=None, max_length=100)
+    phone: str = Field(min_length=4, max_length=40)
+    preferred_text: str | None = Field(default=None, max_length=200)
+    note: str | None = Field(default=None, max_length=1000)
+    conversation_id: int | None = None
+
+
+class CallbackUpdate(BaseModel):
+    status: str  # contacted / completed / cancelled
+    note: str | None = Field(default=None, max_length=1000)
+
+
 class PasswordQuery(BaseModel):
     query: str = Field(min_length=1, max_length=200)  # 이메일 또는 아이디
 

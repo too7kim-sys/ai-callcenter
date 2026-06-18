@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>콜백 큐 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/ui.css" />
+<link rel="stylesheet" href="/assets/nav.css" />
+<style>
+  .cb-summary { display: flex; gap: var(--space-3); margin-bottom: var(--space-4); }
+  .cb-summary .pill {
+    background: var(--c-surface); border: 1px solid var(--c-surface-alt); border-radius: 8px;
+    padding: 12px 16px; min-width: 120px;
+  }
+  .cb-summary .pill .num {
+    font-size: var(--text-2xl); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums;
+  }
+  .cb-summary .pill .label {
+    font-size: var(--text-xs); color: var(--c-text-muted);
+    text-transform: uppercase; letter-spacing: .04em;
+  }
+  .cb-summary .pill.pending .num    { color: var(--c-warning); }
+  .cb-summary .pill.contacted .num  { color: var(--c-brand-700); }
+  .cb-summary .pill.completed .num  { color: var(--c-success); }
+  .cb-summary .pill.cancelled .num  { color: var(--c-text-muted); }
+
+  .cb-list { display: flex; flex-direction: column; gap: 12px; }
+  .cb-card {
+    background: var(--c-surface); border: 1px solid var(--c-surface-alt); border-radius: 10px;
+    padding: 16px;
+  }
+  .cb-card.contacted { border-color: var(--c-brand-700); }
+  .cb-card .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .cb-card .name { font-weight: var(--fw-semibold); color: var(--c-text); }
+  .cb-card .phone {
+    font-family: var(--font-mono, monospace); font-size: var(--text-lg);
+    color: var(--c-brand-700); margin-top: 4px;
+  }
+  .cb-card .meta { font-size: var(--text-xs); color: var(--c-text-muted); margin-top: 4px; }
+  .cb-card .preferred { margin-top: 8px; font-size: var(--text-sm); color: var(--c-text); }
+  .cb-card .note {
+    margin-top: 8px; font-size: var(--text-sm); padding: 8px 10px;
+    background: var(--c-surface-alt); border-radius: 6px; white-space: pre-wrap;
+  }
+  .cb-card .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cb-card .badge.contacted { background: var(--c-brand-700); color: white; }
+
+  .filter-tabs { display: flex; gap: 4px; margin-bottom: var(--space-3); }
+  .filter-tabs button {
+    padding: 6px 14px; font-size: var(--text-sm); border-radius: 6px;
+    border: 1px solid var(--c-surface-alt); background: transparent; cursor: pointer;
+    color: var(--c-text-muted);
+  }
+  .filter-tabs button.active { background: var(--c-brand-700); color: white; border-color: var(--c-brand-700); }
+</style>
+</head>
+<body>
+<header id="app-nav"></header>
+
+<header class="page-header">
+  <div>
+    <div class="title">콜백 큐</div>
+    <div class="subtitle">예약된 통화를 처리하세요</div>
+  </div>
+  <div class="meta">
+    <button class="btn btn-secondary btn-sm" id="refresh-btn">새로고침</button>
+  </div>
+</header>
+
+<div class="page-container">
+  <div class="cb-summary" id="summary"></div>
+
+  <div class="filter-tabs" id="filter-tabs">
+    <button data-status="active" class="active">활성 (대기 + 진행)</button>
+    <button data-status="pending">대기</button>
+    <button data-status="contacted">진행</button>
+    <button data-status="completed">완료</button>
+    <button data-status="cancelled">취소</button>
+  </div>
+
+  <div class="cb-list" id="list">
+    <p class="muted">불러오는 중…</p>
+  </div>
+</div>
+
+<script src="/assets/ui.js"></script>
+<script src="/assets/nav.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let currentStatus = "active";
+
+async function loadSummary() {
+  try {
+    const s = await (await fetch("/api/callbacks/summary")).json();
+    const pills = [
+      { key: "pending",   label: "대기 중", num: s.pending },
+      { key: "contacted", label: "진행 중", num: s.contacted },
+      { key: "completed", label: "완료",   num: s.completed },
+      { key: "cancelled", label: "취소",   num: s.cancelled },
+    ];
+    $("summary").innerHTML = pills.map((p) => `
+      <div class="pill ${p.key}">
+        <div class="label">${p.label}</div>
+        <div class="num">${p.num}</div>
+      </div>`).join("");
+  } catch (e) { /* 무시 */ }
+}
+
+async function loadList() {
+  const status = currentStatus;
+  const url = status === "active"
+    ? "/api/callbacks"
+    : `/api/callbacks?status=${status}`;
+  let rows;
+  try { rows = await (await fetch(url)).json(); }
+  catch (e) {
+    $("list").innerHTML = `<p class="muted">불러오기 실패</p>`;
+    return;
+  }
+  if (!rows.length) {
+    $("list").innerHTML = `<p class="muted">표시할 콜백이 없습니다.</p>`;
+    return;
+  }
+  $("list").innerHTML = rows.map(renderCard).join("");
+  rows.forEach((cb) => attachActions(cb));
+}
+
+function fmtTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function renderCard(cb) {
+  const escHtml = (s) => UI.escapeHtml(s == null ? "" : String(s));
+  const isContacted = cb.status === "contacted";
+  const isDone = cb.status === "completed" || cb.status === "cancelled";
+  const actions = isDone ? "" : `
+    <div class="actions">
+      ${cb.status === "pending"
+        ? `<button class="btn btn-sm btn-secondary" data-act="contact" data-id="${cb.id}">📞 통화 시작</button>` : ""}
+      <button class="btn btn-sm btn-primary" data-act="complete" data-id="${cb.id}">✓ 완료</button>
+      <button class="btn btn-sm btn-secondary" data-act="cancel" data-id="${cb.id}">✕ 취소</button>
+    </div>`;
+  return `
+    <div class="cb-card ${cb.status}">
+      <div class="row">
+        <div>
+          <div class="name">${escHtml(cb.customer_name)} ${isContacted ? '<span class="badge contacted">진행 중</span>' : ''}</div>
+          <a class="phone" href="tel:${escHtml(cb.phone)}">${escHtml(cb.phone)}</a>
+          <div class="meta">예약 ${fmtTime(cb.created_at)}${cb.contacted_at ? ` · 통화 시작 ${fmtTime(cb.contacted_at)}` : ""}${cb.assigned_agent_name ? ` · 담당 ${escHtml(cb.assigned_agent_name)}` : ""}${cb.conversation_id ? ` · 연계 상담 #${cb.conversation_id}` : ""}</div>
+          ${cb.preferred_text ? `<div class="preferred">📅 ${escHtml(cb.preferred_text)}</div>` : ""}
+          ${cb.note ? `<div class="note">${escHtml(cb.note)}</div>` : ""}
+        </div>
+        ${actions}
+      </div>
+    </div>`;
+}
+
+function attachActions(cb) {
+  document.querySelectorAll(`button[data-id="${cb.id}"]`).forEach((b) => {
+    b.addEventListener("click", () => doAction(cb.id, b.dataset.act));
+  });
+}
+
+async function doAction(id, act) {
+  const map = {
+    contact:  { path: "contact",  confirm: null,                              body: null },
+    complete: { path: "complete", confirm: null,                              body: () => promptNote("통화 결과 메모 (선택)") },
+    cancel:   { path: "cancel",   confirm: "이 콜백을 취소하시겠습니까?",      body: () => promptNote("취소 사유 (선택)") },
+  }[act];
+  if (!map) return;
+  if (map.confirm && !confirm(map.confirm)) return;
+  const body = map.body ? map.body() : null;
+  try {
+    const res = await fetch(`/api/callbacks/${id}/${map.path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify({ status: map.path === "contact" ? "contacted" : (map.path === "complete" ? "completed" : "cancelled"), note: body }) : "{}",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      UI.toast(`처리 실패: ${err.detail || res.status}`, { type: "danger" });
+      return;
+    }
+    UI.toast("처리되었습니다.", { type: "success" });
+    loadSummary();
+    loadList();
+  } catch (e) {
+    UI.toast("처리 중 오류가 발생했습니다.", { type: "danger" });
+  }
+}
+
+function promptNote(label) {
+  const v = (prompt(label) || "").trim();
+  return v || null;
+}
+
+$("filter-tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-status]");
+  if (!b) return;
+  currentStatus = b.dataset.status;
+  document.querySelectorAll("#filter-tabs button").forEach((x) =>
+    x.classList.toggle("active", x === b));
+  loadList();
+});
+
+$("refresh-btn").addEventListener("click", () => { loadSummary(); loadList(); });
+
+document.addEventListener("auth-ready", () => {
+  loadSummary();
+  loadList();
+});
+
+// SSE 라이브 업데이트 — 새 콜백/상태 변경 즉시 반영
+if (typeof EventSource !== "undefined") {
+  try {
+    const sse = new EventSource("/api/events/stream");
+    const refresh = () => { loadSummary(); loadList(); };
+    sse.addEventListener("callback_created", refresh);
+    sse.addEventListener("callback_updated", refresh);
+  } catch (e) { /* 폴링 폴백 안 함 — 콜백은 폭주 가능성 낮음 */ }
+}
+</script>
+</body>
+</html>

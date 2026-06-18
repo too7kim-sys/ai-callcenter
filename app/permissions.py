@@ -26,6 +26,7 @@ class P:
     AUDIT_VIEW = "audit.view"
     TEMPLATE_MANAGE = "template.manage"
     DATA_EXPORT = "data.export"
+    CALLBACK_MANAGE = "callback.manage"
 
 
 # 카탈로그: (key, 설명, 그룹). 그룹은 UI 정렬·묶기에 사용.
@@ -35,6 +36,7 @@ CATALOG: List[Tuple[str, str, str]] = [
     (P.CONV_ANALYZE,     "상담 요약·분류 실행",        "상담"),
     (P.CONV_RECOMMEND,   "답변 추천 받기",             "상담"),
     (P.CONV_CLOSE,       "상담 종료 (학습 트리거)",    "상담"),
+    (P.CALLBACK_MANAGE,  "콜백 큐 처리 (예약 통화)",   "상담"),
     (P.KNOWLEDGE_VIEW,   "학습 데이터 조회",           "학습"),
     (P.KNOWLEDGE_DELETE, "학습 데이터 삭제",           "학습"),
     (P.FAQ_VIEW,         "FAQ 조회",                   "FAQ"),
@@ -66,6 +68,7 @@ ROLE_AGENT = "agent"
 # agent의 기본 권한: 일상 응대 + 조회. 삭제·관리 권한 제외.
 DEFAULT_AGENT_PERMISSIONS = {
     P.CONV_VIEW, P.CONV_REPLY, P.CONV_ANALYZE, P.CONV_RECOMMEND, P.CONV_CLOSE,
+    P.CALLBACK_MANAGE,
     P.KNOWLEDGE_VIEW, P.FAQ_VIEW, P.PASSWORD_ASSIST,
 }
 

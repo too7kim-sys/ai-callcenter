@@ -279,6 +279,7 @@
   <div class="messages" id="messages" style="display:none"></div>
   <div class="quick-actions" id="quick-actions" style="display:none">
     <button class="qa-btn" id="qa-agent">🙋 상담원 연결</button>
+    <button class="qa-btn" id="qa-callback">📞 콜백 예약</button>
     <button class="qa-btn danger" id="qa-end">상담 종료</button>
   </div>
   <div class="composer" id="composer" style="display:none">
@@ -739,7 +740,33 @@ $("msg-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendM
 $("mic-btn").addEventListener("click", toggleMic);
 $("tts-btn").addEventListener("click", toggleTts);
 $("qa-agent").addEventListener("click", requestAgent);
+$("qa-callback").addEventListener("click", requestCallback);
 $("qa-end").addEventListener("click", openEndModal);
+
+async function requestCallback() {
+  const phone = (prompt("연락받을 전화번호를 입력해 주세요 (예: 010-1234-5678)") || "").trim();
+  if (!phone) return;
+  const preferred = (prompt("희망 통화 시간을 입력해 주세요 (예: 내일 오후 2시)\n비워두면 가능한 빨리 연락드립니다.") || "").trim();
+  const note = (prompt("미리 알려둘 내용이 있으면 적어 주세요 (선택)") || "").trim();
+  try {
+    const res = await fetch(API + "/api/callbacks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone, preferred_text: preferred || null, note: note || null,
+        conversation_id: conversationId,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showNotice(`콜백 예약 실패: ${err.detail || res.status}`);
+      return;
+    }
+    showNotice("콜백 예약이 접수되었습니다. 영업일 기준 순차적으로 연락드립니다.");
+  } catch (e) {
+    showNotice("콜백 예약 중 오류가 발생했습니다.");
+  }
+}
 
 setupVoice();
 loadConfig();

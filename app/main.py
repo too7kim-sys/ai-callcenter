@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from . import accounts, ai, auth, backup, config, faq
 from .database import Base, engine
-from .routers import agent, chat, password
+from .routers import agent, callback, chat, password
 from .routers import audit as audit_router
 from .routers import auth as auth_router
 from .routers import dashboard as dashboard_router
@@ -74,6 +74,7 @@ app.include_router(roles_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(audit_router.router)
 app.include_router(realtime_router.router)
+app.include_router(callback.router)
 
 STATIC_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static"
@@ -213,3 +214,9 @@ def audit_page():
 def templates_page():
     """답변 템플릿 관리 화면."""
     return FileResponse(os.path.join(STATIC_DIR, "templates.html"))
+
+
+@app.get("/callbacks")
+def callbacks_page():
+    """콜백 큐 관리 화면."""
+    return FileResponse(os.path.join(STATIC_DIR, "callbacks.html"))

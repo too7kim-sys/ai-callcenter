@@ -203,6 +203,28 @@ class RolePermission(Base):
     created_at = Column(DateTime, default=_now)
 
 
+class Callback(Base):
+    """고객 콜백 요청 — 영업 시간 외 / 즉시 연결 불가 시 예약.
+
+    상담원 콘솔에서 큐로 노출되고, 통화 후 상태를 진행/완료/취소 로 변경한다.
+    """
+
+    __tablename__ = "callbacks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # 고객이 명시 상담을 시작하지 않고 콜백만 신청할 수도 있어 NULL 허용
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True, index=True)
+    customer_name = Column(String, default="고객")
+    phone = Column(String)
+    preferred_text = Column(String, nullable=True)  # "내일 오후 2시" 등 자유 텍스트
+    note = Column(Text, nullable=True)
+    status = Column(String, default="pending", index=True)  # pending / contacted / completed / cancelled
+    assigned_agent_id = Column(Integer, ForeignKey("agent_users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
+    contacted_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+
 class FaqEntry(Base):
     """관리자가 큐레이션하는 FAQ 항목.
 
