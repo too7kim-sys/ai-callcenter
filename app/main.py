@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from . import accounts, ai, auth, backup, config, faq
 from .database import Base, engine
+from .security_headers import SecurityHeadersMiddleware
 from .routers import agent, callback, chat, password
 from .routers import audit as audit_router
 from .routers import auth as auth_router
@@ -70,6 +71,7 @@ faq.init_db()          # FAQ 시드 + 캐시 로딩
 backup.start_scheduler()  # 자동 백업 데몬 (BACKUP_ENABLED=false 면 no-op)
 
 app = FastAPI(title="AI 콜센터", version="1.0.0")
+app.add_middleware(SecurityHeadersMiddleware)
 app.include_router(chat.router)
 app.include_router(agent.router)
 app.include_router(password.router)

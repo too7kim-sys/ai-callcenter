@@ -7,7 +7,7 @@ import tempfile
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from .. import ai, audit, auth, faq, knowledge, notifier, realtime, voice
+from .. import ai, audit, auth, faq, knowledge, masking, notifier, realtime, voice
 from ..database import get_db
 from ..models import AgentUser, Conversation, ConversationNote, KnowledgeItem, Message, ReplyTemplate
 from ..permissions import P
@@ -602,11 +602,13 @@ def export_knowledge(
     db: Session = Depends(get_db),
     _user=Depends(auth.require_permission(P.DATA_EXPORT)),
 ):
+    """학습 데이터 CSV 내보내기. 대량 유출 방어를 위해 PII 마스킹 적용."""
     rows = []
     for it in db.query(KnowledgeItem).order_by(KnowledgeItem.id).all():
         rows.append({
             "id": f"L{it.id}", "conversation_id": it.conversation_id,
-            "question": it.question, "answer": it.answer,
+            "question": masking.mask_text(it.question),
+            "answer": masking.mask_text(it.answer),
             "has_embedding": "Y" if it.embedding else "N",
             "created_at": it.created_at.isoformat() if it.created_at else "",
         })
@@ -619,6 +621,10 @@ def export_conversations(
     db: Session = Depends(get_db),
     _user=Depends(auth.require_permission(P.DATA_EXPORT)),
 ):
+    """상담 메타데이터 CSV 내보내기. customer_feedback 은 PII 마스킹 적용.
+
+    customer_name 은 운영상 식별 용도로 그대로 노출 (이미 가명 가능).
+    """
     rows = []
     for c in db.query(Conversation).order_by(Conversation.id).all():
         agent_name = ""
@@ -631,12 +637,14 @@ def export_conversations(
             "risk_level": c.risk_level or "", "message_count": len(c.messages),
             "assigned_agent": agent_name,
             "customer_rating": c.customer_rating or "",
+            "customer_feedback": masking.mask_text(c.customer_feedback) or "",
             "created_at": c.created_at.isoformat() if c.created_at else "",
             "updated_at": c.updated_at.isoformat() if c.updated_at else "",
         })
     return _csv_response(rows, ["id", "customer_name", "status", "category", "sentiment",
                                  "risk_level", "message_count", "assigned_agent",
-                                 "customer_rating", "created_at", "updated_at"], "conversations.csv")
+                                 "customer_rating", "customer_feedback",
+                                 "created_at", "updated_at"], "conversations.csv")
 
 
 @router.get("/faq")

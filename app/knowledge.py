@@ -10,7 +10,7 @@ import json
 import math
 import re
 
-from . import ai
+from . import ai, masking
 from .models import KnowledgeItem
 
 EMBEDDING_MIN_SCORE = 0.5   # 코사인 유사도 최소 임계값
@@ -32,6 +32,11 @@ def learn_from_conversation(db, conv):
 
     pairs = _extract_pairs(conv)
     for question, answer in pairs:
+        # PII 마스킹 — RAG 에 영구 저장되므로 학습 시점에 한 번만 정리하면 됨.
+        # 다음 상담의 답변 추천에 이 데이터가 인용될 수 있어, 다른 고객에게
+        # 이전 고객의 전화번호·주민번호가 유출되는 사고를 차단한다.
+        question = masking.mask_text(question) or question
+        answer = masking.mask_text(answer) or answer
         embedding = ai.embed_text(question)
         db.add(KnowledgeItem(
             conversation_id=conv.id,
