@@ -88,6 +88,21 @@ class CallbackUpdate(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
 
 
+class CallRequest(BaseModel):
+    conversation_id: int
+    customer_name: str | None = Field(default=None, max_length=100)
+
+
+class CallSignalRequest(BaseModel):
+    """WebRTC SDP / ICE candidate 전달용."""
+    kind: str = Field(min_length=1, max_length=20)   # offer / answer / ice / hangup
+    payload: dict = Field(default_factory=dict)
+
+
+class CallEndRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=40)
+
+
 class PasswordQuery(BaseModel):
     query: str = Field(min_length=1, max_length=200)  # 이메일 또는 아이디
 

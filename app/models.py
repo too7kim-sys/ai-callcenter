@@ -210,6 +210,29 @@ class RolePermission(Base):
     created_at = Column(DateTime, default=_now)
 
 
+class Call(Base):
+    """WebRTC 음성 통화 세션.
+
+    고객(채팅 위젯/페이지)이 ☎ 버튼을 누르면 1건 생성되고, 상담원이 '받기'
+    누르면 WebRTC P2P 시그널링이 시작된다. 통신은 서버를 거치지 않고
+    브라우저↔브라우저 직접 흐른다 — 서버는 시그널링만 중계.
+    """
+
+    __tablename__ = "calls"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), index=True)
+    # requesting → answered → ended (or missed/rejected)
+    status = Column(String, default="requesting", index=True)
+    customer_name = Column(String, default="고객")
+    assigned_agent_id = Column(Integer, ForeignKey("agent_users.id"), nullable=True, index=True)
+    requested_at = Column(DateTime, default=_now, index=True)
+    answered_at = Column(DateTime, nullable=True)
+    ended_at = Column(DateTime, nullable=True)
+    duration_seconds = Column(Integer, nullable=True)
+    end_reason = Column(String, nullable=True)  # customer_hangup / agent_hangup / timeout / rejected
+
+
 class MessageEvaluation(Base):
     """AI 답변 품질 자동 평가 (LLM-as-judge).
 

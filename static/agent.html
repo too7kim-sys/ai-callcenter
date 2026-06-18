@@ -374,9 +374,26 @@
   }
 </style>
 <script src="/assets/pwa.js" defer></script>
+<script src="/assets/webrtc.js"></script>
 </head>
 <body>
 <header id="app-nav"></header>
+
+<!-- 인입 통화 모달 (벨림 / 통화중) -->
+<div id="call-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,23,42,.55); z-index:200; align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:14px; padding:28px 32px; text-align:center; min-width:320px; max-width:90vw; box-shadow:0 24px 60px rgba(15,23,42,.35);">
+    <div id="call-icon" style="font-size:48px; margin-bottom:10px;">📞</div>
+    <div id="call-title" style="font-size:18px; font-weight:700; color:#0f172a; margin-bottom:6px;">인입 통화</div>
+    <div id="call-sub" style="font-size:14px; color:#64748b; margin-bottom:18px;">고객</div>
+    <div id="call-buttons">
+      <button id="call-accept-btn" style="background:#16a34a; color:#fff; border:none; border-radius:8px; padding:10px 22px; font-size:14px; font-weight:600; cursor:pointer; margin-right:8px;">✓ 받기</button>
+      <button id="call-reject-btn" style="background:#ef4444; color:#fff; border:none; border-radius:8px; padding:10px 22px; font-size:14px; font-weight:600; cursor:pointer;">✕ 거절</button>
+    </div>
+    <div id="call-active-btns" style="display:none;">
+      <button id="call-hangup-btn-agent" style="background:#ef4444; color:#fff; border:none; border-radius:8px; padding:10px 22px; font-size:14px; font-weight:600; cursor:pointer;">☎ 끊기</button>
+    </div>
+  </div>
+</div>
 
 <div class="work-area">
   <!-- 사이드바 -->
@@ -1110,6 +1127,126 @@ document.addEventListener("auth-ready", bootstrap);
 let SSE_ACTIVE = false;
 let _sse = null;
 
+// --- WebRTC 인입 통화 처리 ---
+let _call = null;
+let _activeCallId = null;
+let _ringingCall = null;
+let _callStartedAt = null;
+let _callTimer = null;
+
+function showIncomingCall(data) {
+  // 이미 통화중이면 다른 벨림은 무시 (멀티 콜 미지원)
+  if (_call || _ringingCall) return;
+  _ringingCall = data;
+  const overlay = document.getElementById("call-overlay");
+  overlay.style.display = "flex";
+  document.getElementById("call-icon").textContent = "📞";
+  document.getElementById("call-title").textContent = "인입 통화";
+  document.getElementById("call-sub").textContent =
+    `${data.customer_name || "고객"} (상담 #${data.conversation_id})`;
+  document.getElementById("call-buttons").style.display = "";
+  document.getElementById("call-active-btns").style.display = "none";
+
+  // 알림음 (브라우저 정책상 사용자 제스처 없으면 안 날 수 있음)
+  if (typeof Audio !== "undefined") {
+    try {
+      const a = new Audio();
+      a.volume = 0.5;
+      // 짧은 비프 (data URI 로 임베드된 WAV)
+    } catch (e) {}
+  }
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification("📞 인입 통화", { body: data.customer_name || "고객", tag: "call-" + data.call_id });
+  }
+}
+
+async function acceptCall() {
+  if (!_ringingCall) return;
+  const callData = _ringingCall;
+  _ringingCall = null;
+  try {
+    const r = await fetch(`/api/calls/${callData.call_id}/answer`, { method: "POST" });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      alert("받기 실패: " + (e.detail || r.status));
+      document.getElementById("call-overlay").style.display = "none";
+      return;
+    }
+  } catch (e) {
+    alert("받기 중 오류: " + e.message);
+    document.getElementById("call-overlay").style.display = "none";
+    return;
+  }
+
+  _activeCallId = callData.call_id;
+  document.getElementById("call-buttons").style.display = "none";
+  document.getElementById("call-active-btns").style.display = "";
+  document.getElementById("call-icon").textContent = "☎";
+  document.getElementById("call-title").textContent = "통화 중";
+  document.getElementById("call-sub").textContent = `${callData.customer_name || "고객"} · 연결 중…`;
+
+  // 상담원은 callee — offer 가 도착하면 WebRTC 시작 (handleSignal 안에서)
+  // 미리 PeerConnection 만 만들어 둠 (isCaller=false → offer 안 만듦)
+  _call = new CallClient({
+    role: "agent",
+    callId: _activeCallId,
+    conversationId: callData.conversation_id,
+    onState: (s) => {
+      if (s === "connected") {
+        _callStartedAt = Date.now();
+        const sub = document.getElementById("call-sub");
+        if (_callTimer) clearInterval(_callTimer);
+        _callTimer = setInterval(() => {
+          const sec = Math.floor((Date.now() - _callStartedAt) / 1000);
+          sub.textContent = `${callData.customer_name || "고객"} · ${Math.floor(sec/60)}:${String(sec%60).padStart(2,"0")}`;
+        }, 1000);
+      } else if (s === "ended") {
+        endCallUi({ duration_seconds: _callStartedAt ? Math.floor((Date.now() - _callStartedAt) / 1000) : 0 });
+      }
+    },
+    onError: (e) => UI.toast("통화 오류: " + e.message, { type: "danger" }),
+  });
+  try {
+    await _call.start({ isCaller: false });
+  } catch (e) {
+    endCallUi({ reason: "mic_denied" });
+  }
+}
+
+async function rejectCall() {
+  if (!_ringingCall) return;
+  const id = _ringingCall.call_id;
+  _ringingCall = null;
+  document.getElementById("call-overlay").style.display = "none";
+  try { await fetch(`/api/calls/${id}/reject`, { method: "POST" }); } catch (e) {}
+}
+
+async function hangupCall() {
+  if (_call) await _call.hangup();
+  else if (_activeCallId) {
+    try { await fetch(`/api/calls/${_activeCallId}/end`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "agent_hangup" }),
+    }); } catch (e) {}
+    endCallUi({});
+  }
+}
+
+function endCallUi(data) {
+  if (_callTimer) { clearInterval(_callTimer); _callTimer = null; }
+  if (_call) { try { _call.cleanup(); } catch (e) {} }
+  _call = null; _ringingCall = null; _activeCallId = null; _callStartedAt = null;
+  document.getElementById("call-overlay").style.display = "none";
+  if (data && data.duration_seconds > 0) {
+    UI.toast(`통화 종료 (${Math.floor(data.duration_seconds/60)}분 ${data.duration_seconds%60}초)`, { type: "info" });
+  }
+}
+
+document.getElementById("call-accept-btn").addEventListener("click", acceptCall);
+document.getElementById("call-reject-btn").addEventListener("click", rejectCall);
+document.getElementById("call-hangup-btn-agent").addEventListener("click", hangupCall);
+
+
 function startSse() {
   if (typeof EventSource === "undefined") return;
   try {
@@ -1132,6 +1269,18 @@ function startSse() {
     _sse.addEventListener("conversation_created", refresh);
     _sse.addEventListener("conversation_updated", refresh);
     _sse.addEventListener("message_created", refresh);
+    _sse.addEventListener("call_requested", (e) => {
+      const data = JSON.parse(e.data || "{}");
+      showIncomingCall(data);
+    });
+    _sse.addEventListener("call_signal", (e) => {
+      const data = JSON.parse(e.data || "{}");
+      if (_call) _call.handleSignal(data);
+    });
+    _sse.addEventListener("call_ended", (e) => {
+      const data = JSON.parse(e.data || "{}");
+      if (data.call_id === _activeCallId) endCallUi(data);
+    });
     _sse.addEventListener("error", () => {
       // 연결 끊김 — EventSource 가 자동 재시도. 그동안 폴링 빠르게 복귀
       SSE_ACTIVE = false;

@@ -250,6 +250,7 @@
   .modal-actions .btn-ok { background: #1d4ed8; color: #fff; }
 </style>
 <script src="/assets/pwa.js" defer></script>
+<script src="/assets/webrtc.js"></script>
 </head>
 <body>
 <div class="chat">
@@ -280,8 +281,15 @@
   <div class="messages" id="messages" style="display:none"></div>
   <div class="quick-actions" id="quick-actions" style="display:none">
     <button class="qa-btn" id="qa-agent">🙋 상담원 연결</button>
+    <button class="qa-btn" id="qa-call">☎ 통화 요청</button>
     <button class="qa-btn" id="qa-callback">📞 콜백 예약</button>
     <button class="qa-btn danger" id="qa-end">상담 종료</button>
+  </div>
+
+  <!-- 통화 중 상태 표시 -->
+  <div id="call-bar" style="display:none; padding:10px 16px; background:#1d4ed8; color:#fff; font-size:13px; text-align:center;">
+    <span id="call-status">통화 연결 중…</span>
+    <button id="call-hangup-btn" style="margin-left:12px; background:#ef4444; color:#fff; border:none; border-radius:6px; padding:4px 12px; font-size:12px; cursor:pointer;">끊기</button>
   </div>
   <div class="composer" id="composer" style="display:none">
     <button class="icon-btn" id="mic-btn" title="음성으로 말하기" aria-label="음성으로 말하기">
@@ -521,6 +529,29 @@ function startSse(convId) {
     };
     _sse.addEventListener("message_created", refresh);
     _sse.addEventListener("conversation_updated", refresh);
+    _sse.addEventListener("call_answered", async (e) => {
+      const data = JSON.parse(e.data || "{}");
+      if (data.call_id === _callId) {
+        setCallStatus("상담원 응답 — 연결 중…");
+        // 고객이 caller 로 offer 생성·전송
+        await _startCallClient(_callId, true);
+      }
+    });
+    _sse.addEventListener("call_signal", (e) => {
+      const data = JSON.parse(e.data || "{}");
+      if (_call) _call.handleSignal(data);
+    });
+    _sse.addEventListener("call_ended", (e) => {
+      const data = JSON.parse(e.data || "{}");
+      if (data.call_id === _callId) {
+        if (_call) _call.cleanup();
+        _call = null; _callId = null;
+        setCallStatus("", false);
+        const d = data.duration_seconds || 0;
+        if (data.reason === "rejected") showNotice("상담원이 통화를 거절했습니다.");
+        else showNotice(`☎ 통화 종료 (${Math.floor(d/60)}분 ${d%60}초)`);
+      }
+    });
     _sse.addEventListener("error", () => {
       _sseActive = false;
       startPolling();  // 폴링 주기를 빠른 모드(4초)로 복귀
@@ -741,8 +772,64 @@ $("msg-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendM
 $("mic-btn").addEventListener("click", toggleMic);
 $("tts-btn").addEventListener("click", toggleTts);
 $("qa-agent").addEventListener("click", requestAgent);
+$("qa-call").addEventListener("click", requestCall);
 $("qa-callback").addEventListener("click", requestCallback);
 $("qa-end").addEventListener("click", openEndModal);
+$("call-hangup-btn").addEventListener("click", () => { if (_call) _call.hangup(); });
+
+// --- WebRTC 통화 ---
+let _call = null;
+let _callId = null;
+
+function setCallStatus(text, show = true) {
+  $("call-bar").style.display = show ? "block" : "none";
+  $("call-status").textContent = text;
+}
+
+async function requestCall() {
+  if (!conversationId) { showNotice("상담을 먼저 시작해 주세요."); return; }
+  if (_call) { showNotice("이미 통화 중입니다."); return; }
+  if (!window.RTCPeerConnection) { showNotice("이 브라우저는 음성 통화를 지원하지 않습니다."); return; }
+  try {
+    const r = await fetch("/api/calls/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      showNotice("통화 요청 실패: " + (e.detail || r.status));
+      return;
+    }
+    const call = await r.json();
+    _callId = call.id;
+    setCallStatus("상담원 호출 중… 잠시만 기다려 주세요.");
+    showNotice("☎ 통화 요청을 보냈습니다. 상담원이 받으면 연결됩니다.");
+  } catch (e) {
+    showNotice("통화 요청 중 오류: " + e.message);
+  }
+}
+
+async function _startCallClient(callId, isCaller) {
+  if (_call) return;
+  _call = new CallClient({
+    role: "customer",
+    callId,
+    conversationId,
+    onState: (s) => {
+      if (s === "connecting") setCallStatus("연결 중…");
+      else if (s === "connected") setCallStatus("☎ 통화 중");
+      else if (s === "ended") { setCallStatus("", false); _call = null; _callId = null; }
+    },
+    onError: (e) => showNotice("통화 오류: " + e.message),
+  });
+  try {
+    await _call.start({ isCaller });
+  } catch (e) {
+    _call = null; _callId = null;
+    setCallStatus("", false);
+  }
+}
 
 async function requestCallback() {
   const phone = (prompt("연락받을 전화번호를 입력해 주세요 (예: 010-1234-5678)") || "").trim();
