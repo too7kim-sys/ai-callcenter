@@ -8,3 +8,6 @@ python-multipart>=0.0.6
 faster-whisper>=1.0.0
 # 선택: AI 음성 응답(TTS). 미설치 시 espeak-ng(시스템) 폴백, 둘 다 없으면 비활성.
 edge-tts>=7.0.0
+# 2FA (TOTP) — Google Authenticator/Authy 호환. QR 코드 인라인 SVG 생성.
+pyotp>=2.9.0
+qrcode>=7.4.0

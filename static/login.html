@@ -87,6 +87,19 @@
       <div class="field-error" id="msg"></div>
       <button type="submit" class="btn btn-primary btn-block" id="submit">로그인</button>
     </form>
+    <form id="form2fa" autocomplete="off" style="display:none">
+      <p class="info" style="text-align:left;margin:0 0 var(--space-3)">
+        인증기 앱의 6자리 코드 또는 복구 코드(XXXX-XXXX)를 입력해 주세요.
+      </p>
+      <div class="field">
+        <label class="label">인증 코드</label>
+        <input class="input" type="text" id="code" autocomplete="one-time-code"
+               inputmode="numeric" placeholder="000000" maxlength="20" autofocus />
+      </div>
+      <div class="field-error" id="msg2fa"></div>
+      <button type="submit" class="btn btn-primary btn-block" id="submit2fa">2단계 인증</button>
+      <button type="button" class="btn btn-secondary btn-block" id="back2fa" style="margin-top:8px">처음으로</button>
+    </form>
     <div class="info">
       문의: 시스템 관리자 / 헬프데스크<br />
       비밀번호 분실 시 관리자에게 초기화를 요청해 주세요.
@@ -111,6 +124,27 @@ function setError(text) {
   m.classList.toggle("shown", !!text);
 }
 
+let pendingToken = null;
+
+function setError2fa(text) {
+  const m = $("msg2fa");
+  m.textContent = text;
+  m.classList.toggle("shown", !!text);
+}
+
+function show2faStep() {
+  $("form").style.display = "none";
+  $("form2fa").style.display = "";
+  setTimeout(() => $("code").focus(), 50);
+}
+function showLoginStep() {
+  $("form2fa").style.display = "none";
+  $("form").style.display = "";
+  pendingToken = null;
+  $("code").value = "";
+  setError2fa("");
+}
+
 async function submit(e) {
   e.preventDefault();
   const username = $("username").value.trim();
@@ -128,6 +162,12 @@ async function submit(e) {
       body: JSON.stringify({ username, password }),
     });
     if (res.ok) {
+      const data = await res.json();
+      if (data.needs_2fa) {
+        pendingToken = data.pending_token;
+        show2faStep();
+        return;
+      }
       location.href = safeNext(new URLSearchParams(location.search).get("next"));
       return;
     }
@@ -141,7 +181,43 @@ async function submit(e) {
   }
 }
 
+async function submit2fa(e) {
+  e.preventDefault();
+  const code = $("code").value.trim();
+  if (!code) { setError2fa("인증 코드를 입력해 주세요."); return; }
+  if (!pendingToken) { showLoginStep(); return; }
+  $("submit2fa").disabled = true;
+  setError2fa("");
+  try {
+    const res = await fetch("/api/auth/2fa/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pending_token: pendingToken, code }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.used_recovery) {
+        alert("복구 코드로 로그인했습니다. 로그인 후 새 복구 코드를 발급하거나 2FA 를 다시 설정해 주세요.");
+      }
+      location.href = safeNext(new URLSearchParams(location.search).get("next"));
+      return;
+    }
+    // 새 임시 토큰이 헤더로 오면 갱신 (무차별 대입 차단)
+    const newTok = res.headers.get("X-Pending-Token");
+    if (newTok) pendingToken = newTok;
+    let detail = "인증 코드가 올바르지 않습니다.";
+    try { detail = (await res.json()).detail || detail; } catch (e) {}
+    setError2fa(detail);
+  } catch (e) {
+    setError2fa("서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+  } finally {
+    $("submit2fa").disabled = false;
+  }
+}
+
 $("form").addEventListener("submit", submit);
+$("form2fa").addEventListener("submit", submit2fa);
+$("back2fa").addEventListener("click", showLoginStep);
 
 fetch("/api/auth/me").then((r) => {
   if (r.ok) location.href = safeNext(new URLSearchParams(location.search).get("next"));

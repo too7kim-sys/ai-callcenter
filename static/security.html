@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>보안 설정 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/ui.css" />
+<link rel="stylesheet" href="/assets/nav.css" />
+<style>
+  .sec-grid { display: grid; gap: var(--space-4); grid-template-columns: 1fr; max-width: 720px; }
+  .sec-row {
+    display: flex; align-items: center; gap: var(--space-3);
+    padding: 14px 0; border-bottom: 1px solid var(--c-surface-alt);
+  }
+  .sec-row:last-child { border-bottom: 0; }
+  .sec-row .info { flex: 1; }
+  .sec-row .info h4 { margin: 0 0 4px; font-size: var(--text-base); }
+  .sec-row .info p  { margin: 0; font-size: var(--text-sm); color: var(--c-text-muted); }
+  .badge.on  { background: var(--c-success); color: white; }
+  .badge.off { background: var(--c-surface-alt); color: var(--c-text-muted); }
+
+  .qr-wrap {
+    display: flex; gap: var(--space-4); align-items: flex-start;
+    margin-top: var(--space-3); padding: var(--space-3);
+    background: var(--c-surface-alt); border-radius: 8px;
+  }
+  .qr-wrap svg { width: 180px; height: 180px; background: white; padding: 8px; border-radius: 6px; }
+  .qr-wrap .secret {
+    font-family: var(--font-mono, monospace); font-size: var(--text-sm);
+    background: white; padding: 6px 10px; border-radius: 4px;
+    user-select: all; word-break: break-all;
+  }
+  .recovery-list {
+    background: var(--c-warning-bg, #fef3c7);
+    border: 1px solid var(--c-warning, #f59e0b);
+    border-radius: 8px; padding: 14px;
+    margin-top: var(--space-3);
+  }
+  .recovery-list ul {
+    list-style: none; padding: 0; margin: 8px 0 0;
+    columns: 2; column-gap: 16px;
+    font-family: var(--font-mono, monospace); font-size: var(--text-sm);
+  }
+  .recovery-list li { padding: 2px 0; user-select: all; }
+</style>
+<script src="/assets/pwa.js" defer></script>
+</head>
+<body>
+<header id="app-nav"></header>
+
+<header class="page-header">
+  <div>
+    <div class="title">보안 설정</div>
+    <div class="subtitle">2단계 인증 · 비밀번호</div>
+  </div>
+</header>
+
+<div class="page-container">
+  <section class="card">
+    <div class="card-head"><div class="title">2단계 인증 (TOTP)</div></div>
+    <div class="card-body sec-grid">
+
+      <div class="sec-row">
+        <div class="info">
+          <h4>인증기 앱 (Google Authenticator / Authy)</h4>
+          <p>로그인 시 6자리 코드를 추가로 입력합니다. 비밀번호 유출 시에도 계정을 보호합니다.</p>
+        </div>
+        <span id="status" class="badge off">미설정</span>
+      </div>
+
+      <div id="setup-area"></div>
+    </div>
+  </section>
+</div>
+
+<script src="/assets/ui.js"></script>
+<script src="/assets/nav.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+
+function showStatus(enabled) {
+  const el = $("status");
+  el.textContent = enabled ? "활성" : "미설정";
+  el.className = "badge " + (enabled ? "on" : "off");
+}
+
+function renderDisabled() {
+  $("setup-area").innerHTML = `
+    <div class="sec-row">
+      <div class="info">
+        <h4>2FA 활성화</h4>
+        <p>인증기 앱에서 QR 코드를 스캔한 뒤, 6자리 코드를 입력해 활성화합니다.</p>
+      </div>
+      <button class="btn btn-primary" id="start-btn">활성화 시작</button>
+    </div>
+    <div id="qr-step" style="display:none"></div>
+  `;
+  $("start-btn").addEventListener("click", startSetup);
+}
+
+function renderEnabled() {
+  $("setup-area").innerHTML = `
+    <div class="sec-row">
+      <div class="info">
+        <h4>2FA 비활성화</h4>
+        <p>비활성화하려면 본인 비밀번호를 다시 확인해야 합니다.</p>
+      </div>
+      <button class="btn btn-danger" id="disable-btn">비활성화</button>
+    </div>
+  `;
+  $("disable-btn").addEventListener("click", disableTwoFa);
+}
+
+async function startSetup() {
+  const res = await fetch("/api/auth/2fa/setup", { method: "POST" });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    UI.toast(e.detail || "활성화 시작 실패", { type: "danger" });
+    return;
+  }
+  const data = await res.json();
+  $("qr-step").style.display = "";
+  $("qr-step").innerHTML = `
+    <div class="qr-wrap">
+      <div>${data.qr_svg}</div>
+      <div style="flex:1">
+        <p style="margin:0 0 8px"><b>1.</b> 인증기 앱에서 새 항목 추가 → QR 스캔</p>
+        <p style="margin:0 0 8px"><b>또는</b> 수동 입력용 비밀:</p>
+        <code class="secret">${UI.escapeHtml(data.secret)}</code>
+        <p style="margin:14px 0 4px"><b>2.</b> 인증기 앱이 표시하는 6자리 코드를 입력하세요:</p>
+        <input class="input" id="setup-code" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" />
+        <button class="btn btn-primary" id="activate-btn" style="margin-top:8px">활성화</button>
+      </div>
+    </div>
+  `;
+  $("activate-btn").addEventListener("click", async () => {
+    const code = ($("setup-code").value || "").trim();
+    if (!/^\d{6}$/.test(code)) { UI.toast("6자리 숫자를 입력해 주세요.", { type: "warning" }); return; }
+    const r = await fetch("/api/auth/2fa/activate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      UI.toast(e.detail || "활성화 실패", { type: "danger" });
+      return;
+    }
+    const result = await r.json();
+    showStatus(true);
+    renderEnabled();
+    showRecovery(result.recovery_codes);
+  });
+}
+
+function showRecovery(codes) {
+  const html = `
+    <div class="recovery-list">
+      <b>⚠ 복구 코드 — 안전한 곳에 보관하세요</b>
+      <p style="margin:4px 0 0;font-size:var(--text-sm)">
+        인증기 앱을 분실했을 때 1회씩 사용할 수 있습니다. 이 화면을 닫으면 다시 표시되지 않습니다.
+      </p>
+      <ul>${codes.map((c) => `<li>${UI.escapeHtml(c)}</li>`).join("")}</ul>
+      <button class="btn btn-secondary btn-sm" id="copy-recovery" style="margin-top:10px">전체 복사</button>
+    </div>
+  `;
+  $("setup-area").insertAdjacentHTML("beforeend", html);
+  $("copy-recovery").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(codes.join("\n"));
+      UI.toast("복구 코드를 클립보드에 복사했습니다.", { type: "success" });
+    } catch (e) {
+      UI.toast("복사 실패 — 수동으로 복사해 주세요.", { type: "warning" });
+    }
+  });
+}
+
+async function disableTwoFa() {
+  const password = prompt("본인 비밀번호를 입력해 주세요.");
+  if (!password) return;
+  const r = await fetch("/api/auth/2fa/disable", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    UI.toast(e.detail || "비활성화 실패", { type: "danger" });
+    return;
+  }
+  showStatus(false);
+  renderDisabled();
+  UI.toast("2FA 가 비활성화되었습니다.", { type: "success" });
+}
+
+document.addEventListener("auth-ready", (e) => {
+  const user = e.detail;
+  showStatus(!!user.totp_enabled);
+  if (user.totp_enabled) renderEnabled(); else renderDisabled();
+});
+</script>
+</body>
+</html>

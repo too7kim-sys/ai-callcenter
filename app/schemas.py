@@ -97,6 +97,19 @@ class PasswordResetConfirm(BaseModel):
     new_password: str = Field(min_length=8, max_length=100)
 
 
+class TwoFactorVerifyRequest(BaseModel):
+    pending_token: str = Field(min_length=8, max_length=128)
+    code: str = Field(min_length=4, max_length=20)
+
+
+class TwoFactorSetupRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class TwoFactorDisableRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+
+
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=200)

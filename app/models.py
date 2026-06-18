@@ -164,6 +164,10 @@ class AgentUser(Base):
     locked_until = Column(DateTime, nullable=True)
     last_login_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_now)
+    # 2FA (TOTP) — totp_enabled=True 면 로그인 시 6자리 코드 요구
+    totp_secret = Column(String, nullable=True)
+    totp_enabled = Column(Boolean, default=False)
+    totp_recovery = Column(Text, nullable=True)  # 1회용 복구 코드 JSON 배열 (해시)
 
 
 class AgentSession(Base):

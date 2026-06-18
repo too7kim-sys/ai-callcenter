@@ -40,6 +40,11 @@ def _ensure_columns():
         "messages": [
             ("feedback", "VARCHAR"),
         ],
+        "agent_users": [
+            ("totp_secret", "VARCHAR"),
+            ("totp_enabled", "BOOLEAN DEFAULT 0"),
+            ("totp_recovery", "TEXT"),
+        ],
     }
     for table, cols in expected.items():
         if table not in insp.get_table_names():
@@ -220,6 +225,12 @@ def templates_page():
 def callbacks_page():
     """콜백 큐 관리 화면."""
     return FileResponse(os.path.join(STATIC_DIR, "callbacks.html"))
+
+
+@app.get("/security")
+def security_page():
+    """본인 보안 설정 (2FA)."""
+    return FileResponse(os.path.join(STATIC_DIR, "security.html"))
 
 
 @app.get("/widget")

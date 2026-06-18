@@ -14,6 +14,7 @@
     { key: "users",       href: "/users",       label: "사용자 관리", perm: "user.manage" },
     { key: "permissions", href: "/permissions", label: "권한 관리",   perm: "permission.manage" },
     { key: "audit",       href: "/audit",       label: "변경 이력",   perm: "audit.view" },
+    { key: "security",    href: "/security",    label: "내 보안",     perm: "conversation.view" },
   ];
 
   function escapeHtml(text) {
