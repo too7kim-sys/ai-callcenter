@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
-from .. import audit, auth, permissions, ratelimit, security, twofa
+from .. import anomaly, audit, auth, permissions, ratelimit, security, twofa
 from ..database import get_db
 from ..models import AgentUser
 from ..schemas import (
@@ -36,8 +36,12 @@ def login(
     response: Response,
     db: Session = Depends(get_db),
 ):
+    ip = ratelimit.client_ip(request)
     user, reason = auth.authenticate(db, payload.username, payload.password)
     if user is None:
+        # 실패는 의심 활동 감지로 추적 (locked/inactive 도 invalid 시도일 수 있음)
+        if reason == "invalid":
+            anomaly.on_failed_login(db, ip, payload.username, stage="password")
         if reason == "locked":
             raise HTTPException(
                 status_code=423,
@@ -57,6 +61,7 @@ def login(
 
     token = auth.create_session(db, user, request)
     auth.set_session_cookie(response, token)
+    anomaly.on_login_success(db, user, ip)
     return _user_payload(user)
 
 
@@ -91,7 +96,9 @@ def twofa_verify(
     else:
         ok = twofa.verify_code(user.totp_secret, code)
 
+    ip = ratelimit.client_ip(request)
     if not ok:
+        anomaly.on_failed_login(db, ip, user.username, stage="2fa")
         # 새 임시 토큰 재발급 — 무차별 대입 차단을 위해 동일 토큰 재사용 X
         new_token = twofa.issue_pending_token(user.id)
         raise HTTPException(
@@ -102,6 +109,7 @@ def twofa_verify(
 
     token = auth.create_session(db, user, request)
     auth.set_session_cookie(response, token)
+    anomaly.on_login_success(db, user, ip)
     if used_recovery:
         audit.log(db, user, "auth.2fa.recovery_used",
                   target_type="user", target_id=user.id)

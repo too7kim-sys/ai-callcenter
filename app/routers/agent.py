@@ -7,7 +7,7 @@ import tempfile
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from .. import ai, audit, auth, faq, knowledge, masking, notifier, realtime, voice
+from .. import ai, anomaly, audit, auth, faq, knowledge, masking, notifier, realtime, voice
 from ..database import get_db
 from ..models import AgentUser, Conversation, ConversationNote, KnowledgeItem, Message, ReplyTemplate
 from ..permissions import P
@@ -327,6 +327,16 @@ def alerts_test(
     result = notifier.send_test()
     audit.log(db, user, "alerts.test", details={"ok": result.get("ok")})
     return result
+
+
+@router.get("/security/anomaly")
+def anomaly_status(_user=Depends(auth.require_permission(P.AUDIT_VIEW))):
+    """현재 의심 활동 추적 상태 (실패 로그인 / 다중 IP).
+
+    감지 임계값을 초과해 실제 알림으로 이어진 항목은 변경 이력(audit log)
+    에 action='anomaly.*' 로 영구 기록된다.
+    """
+    return anomaly.status()
 
 
 @router.get("/voice/status")
