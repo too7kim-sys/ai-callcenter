@@ -7,7 +7,7 @@ import tempfile
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session, selectinload
 
-from .. import ai, anomaly, audit, auth, cache, faq, knowledge, masking, notifier, realtime, voice
+from .. import ai, anomaly, audit, auth, cache, faq, knowledge, masking, metrics, notifier, realtime, voice
 from ..database import get_db
 from ..models import AgentUser, Conversation, ConversationNote, KnowledgeItem, Message, ReplyTemplate
 from ..permissions import P
@@ -334,6 +334,15 @@ def alerts_test(
     result = notifier.send_test()
     audit.log(db, user, "alerts.test", details={"ok": result.get("ok")})
     return result
+
+
+@router.get("/admin/metrics")
+def admin_metrics(_user=Depends(auth.require_permission(P.AUDIT_VIEW))):
+    """엔드포인트별 응답 시간 (p50/p95/p99) + 에러율.
+
+    SSE 스트림은 제외. 메모리 상 최근 1000건 표본 슬라이딩 윈도우.
+    """
+    return {"summary": metrics.summary(), "endpoints": metrics.stats()}
 
 
 @router.get("/admin/cache/stats")

@@ -7,7 +7,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from . import accounts, ai, auth, backup, config, faq
+import time
+
+from . import accounts, ai, auth, backup, config, faq, metrics
 from .database import Base, engine
 from .security_headers import SecurityHeadersMiddleware
 from .routers import agent, callback, chat, password
@@ -92,6 +94,20 @@ backup.start_scheduler()  # 자동 백업 데몬 (BACKUP_ENABLED=false 면 no-op
 
 app = FastAPI(title="AI 콜센터", version="1.0.0")
 app.add_middleware(SecurityHeadersMiddleware)
+
+
+@app.middleware("http")
+async def _record_metrics(request, call_next):
+    """엔드포인트별 응답 시간 측정. SSE 스트림은 제외 (오래 열려있어 왜곡)."""
+    if request.url.path.startswith("/api/events/stream"):
+        return await call_next(request)
+    start = time.perf_counter()
+    response = await call_next(request)
+    latency_ms = (time.perf_counter() - start) * 1000
+    metrics.record(request.method, request.url.path, response.status_code, latency_ms)
+    return response
+
+
 app.include_router(chat.router)
 app.include_router(agent.router)
 app.include_router(password.router)
@@ -253,6 +269,12 @@ def callbacks_page():
 def security_page():
     """본인 보안 설정 (2FA)."""
     return FileResponse(os.path.join(STATIC_DIR, "security.html"))
+
+
+@app.get("/metrics")
+def metrics_page():
+    """관리자 — 응답 시간/캐시 메트릭."""
+    return FileResponse(os.path.join(STATIC_DIR, "metrics.html"))
 
 
 @app.get("/widget")

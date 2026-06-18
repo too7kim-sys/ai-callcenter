@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>성능 메트릭 · AI 콜센터</title>
+<link rel="stylesheet" href="/assets/ui.css" />
+<link rel="stylesheet" href="/assets/nav.css" />
+<style>
+  .stats-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: var(--space-4); }
+  .stats-grid .pill {
+    background: var(--c-surface); border: 1px solid var(--c-surface-alt); border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .stats-grid .pill .label {
+    font-size: var(--text-xs); color: var(--c-text-muted);
+    text-transform: uppercase; letter-spacing: .04em;
+  }
+  .stats-grid .pill .num {
+    font-size: var(--text-2xl); font-weight: var(--fw-bold);
+    font-variant-numeric: tabular-nums;
+  }
+  .metrics-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+  .metrics-table th, .metrics-table td {
+    padding: 8px 12px; border-bottom: 1px solid var(--c-surface-alt);
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .metrics-table th { color: var(--c-text-muted); font-weight: var(--fw-semibold);
+    text-transform: uppercase; font-size: var(--text-xs); letter-spacing: .04em; }
+  .metrics-table th:first-child, .metrics-table td:first-child { text-align: left; font-family: var(--font-mono, monospace); font-size: 12px; }
+  .metrics-table tr:hover { background: var(--c-surface-alt); }
+  .slow { color: var(--c-danger); }
+  .medium { color: var(--c-warning); }
+  .fast { color: var(--c-success); }
+  .err { color: var(--c-danger); font-weight: var(--fw-semibold); }
+</style>
+<script src="/assets/pwa.js" defer></script>
+</head>
+<body>
+<header id="app-nav"></header>
+
+<header class="page-header">
+  <div>
+    <div class="title">성능 메트릭</div>
+    <div class="subtitle">엔드포인트별 응답 시간 + 캐시 상태</div>
+  </div>
+  <div class="meta">
+    <button class="btn btn-secondary btn-sm" id="refresh-btn">새로고침</button>
+  </div>
+</header>
+
+<div class="page-container">
+  <section class="card" style="margin-bottom: var(--space-4);">
+    <div class="card-head"><div class="title">요약</div></div>
+    <div class="card-body">
+      <div class="stats-grid" id="summary-grid"></div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-bottom: var(--space-4);">
+    <div class="card-head">
+      <div class="title">엔드포인트별 응답 시간</div>
+      <div class="sub" style="font-size:var(--text-xs); color:var(--c-text-muted);">
+        최근 1000건 표본, p50/p95/p99 (ms)
+      </div>
+    </div>
+    <div class="card-body" id="endpoints-body">
+      <p class="muted">불러오는 중…</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div class="title">캐시 상태</div>
+      <button class="btn btn-secondary btn-sm" id="clear-cache">전체 비우기</button>
+    </div>
+    <div class="card-body">
+      <div class="stats-grid" id="cache-grid"></div>
+    </div>
+  </section>
+</div>
+
+<script src="/assets/ui.js"></script>
+<script src="/assets/nav.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+
+function color(ms) {
+  if (ms < 50)  return "fast";
+  if (ms < 200) return "medium";
+  return "slow";
+}
+
+async function loadMetrics() {
+  let m, c;
+  try {
+    [m, c] = await Promise.all([
+      fetch("/api/admin/metrics").then(r => r.json()),
+      fetch("/api/admin/cache/stats").then(r => r.json()),
+    ]);
+  } catch (e) {
+    UI.toast("메트릭 조회 실패", { type: "danger" });
+    return;
+  }
+  const s = m.summary;
+  $("summary-grid").innerHTML = [
+    { label: "총 요청", num: s.requests || 0 },
+    { label: "엔드포인트", num: s.endpoints || 0 },
+    { label: "평균 응답 (ms)", num: (s.avg_ms || 0).toFixed(1) },
+    { label: "4xx 오류율", num: ((s.error_rate_4xx || 0) * 100).toFixed(2) + "%" },
+    { label: "5xx 오류율", num: ((s.error_rate_5xx || 0) * 100).toFixed(2) + "%" },
+  ].map((p) => `
+    <div class="pill"><div class="label">${UI.escapeHtml(p.label)}</div><div class="num">${UI.escapeHtml(String(p.num))}</div></div>
+  `).join("");
+
+  const rows = m.endpoints || [];
+  if (!rows.length) {
+    $("endpoints-body").innerHTML = `<p class="muted">아직 측정된 요청이 없습니다.</p>`;
+  } else {
+    $("endpoints-body").innerHTML = `
+      <table class="metrics-table">
+        <thead><tr>
+          <th>엔드포인트</th><th>요청</th><th>평균</th><th>p50</th><th>p95</th><th>p99</th><th>4xx</th><th>5xx</th>
+        </tr></thead>
+        <tbody>${rows.map((r) => `
+          <tr>
+            <td>${UI.escapeHtml(r.endpoint)}</td>
+            <td>${r.count}</td>
+            <td class="${color(r.avg_ms)}">${r.avg_ms}</td>
+            <td class="${color(r.p50_ms)}">${r.p50_ms}</td>
+            <td class="${color(r.p95_ms)}">${r.p95_ms}</td>
+            <td class="${color(r.p99_ms)}">${r.p99_ms}</td>
+            <td class="${r.error_4xx ? 'err' : ''}">${r.error_4xx}</td>
+            <td class="${r.error_5xx ? 'err' : ''}">${r.error_5xx}</td>
+          </tr>`).join("")}
+        </tbody></table>`;
+  }
+
+  $("cache-grid").innerHTML = [
+    { label: "활성 엔트리", num: c.size_active },
+    { label: "전체 엔트리", num: c.size_total },
+    { label: "Hit", num: c.hits },
+    { label: "Miss", num: c.misses },
+    { label: "Hit Rate", num: (c.hit_rate * 100).toFixed(1) + "%" },
+    { label: "Write", num: c.writes },
+  ].map((p) => `
+    <div class="pill"><div class="label">${UI.escapeHtml(p.label)}</div><div class="num">${UI.escapeHtml(String(p.num))}</div></div>
+  `).join("");
+}
+
+$("refresh-btn").addEventListener("click", loadMetrics);
+$("clear-cache").addEventListener("click", async () => {
+  if (!confirm("전체 캐시를 비우시겠습니까?")) return;
+  await fetch("/api/admin/cache/clear", { method: "POST" });
+  UI.toast("캐시를 비웠습니다.", { type: "success" });
+  loadMetrics();
+});
+
+document.addEventListener("auth-ready", loadMetrics);
+</script>
+</body>
+</html>
