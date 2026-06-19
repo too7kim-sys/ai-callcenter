@@ -1,0 +1,108 @@
+# /etc/nginx/sites-available/ai-callcenter
+#
+# AI 콜센터 nginx 리버스 프록시 (HTTPS + SSE + 정적 캐싱).
+# 변경 후 활성화:
+#   sudo ln -sf /etc/nginx/sites-available/ai-callcenter /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# HTTPS 인증서는 Let's Encrypt 권장:
+#   sudo apt install certbot python3-certbot-nginx
+#   sudo certbot --nginx -d callcenter.example.com
+
+upstream ai_callcenter {
+    server 127.0.0.1:8000;
+    keepalive 16;
+}
+
+# HTTP → HTTPS 리다이렉트 (ACME challenge 만 80 으로 응답)
+server {
+    listen 80;
+    listen [::]:80;
+    server_name callcenter.example.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name callcenter.example.com;
+
+    # certbot 이 생성하는 경로
+    ssl_certificate     /etc/letsencrypt/live/callcenter.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/callcenter.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # 앱이 자체 보안 헤더를 보내지만, 정적 응답에도 보장
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # STT 음성 업로드(최대 25MB) + 여유
+    client_max_body_size 30M;
+
+    access_log /var/log/nginx/ai-callcenter.access.log;
+    error_log  /var/log/nginx/ai-callcenter.error.log warn;
+
+    # SSE 스트림 — 버퍼링 비활성, 매우 긴 timeout
+    location /api/events/stream {
+        proxy_pass http://ai_callcenter;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection        "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 24h;
+        chunked_transfer_encoding off;
+    }
+
+    # Service Worker / manifest — 캐시 X (즉시 갱신)
+    location ~* ^/(sw\.js|manifest\.webmanifest)$ {
+        proxy_pass http://ai_callcenter;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    }
+
+    # 정적 자산 — 1시간 캐시
+    location /assets/ {
+        proxy_pass http://ai_callcenter;
+        proxy_set_header Host $host;
+        proxy_cache_valid 200 1h;
+        add_header Cache-Control "public, max-age=3600" always;
+    }
+
+    # 위젯 로더 — 외부 사이트에서 임베드하므로 짧은 캐시 + CORS 허용
+    location /widget/loader.js {
+        proxy_pass http://ai_callcenter;
+        proxy_set_header Host $host;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Cache-Control "public, max-age=600" always;
+    }
+
+    # 그 외 모든 요청 — 앱으로
+    location / {
+        proxy_pass http://ai_callcenter;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # WebSocket 호환 (현재는 SSE 만 쓰지만, 추후 확장 대비)
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $http_connection;
+        proxy_read_timeout 60s;
+    }
+}

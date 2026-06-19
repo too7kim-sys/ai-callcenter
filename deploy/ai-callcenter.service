@@ -1,0 +1,42 @@
+[Unit]
+Description=AI 콜센터 (FastAPI + Uvicorn)
+Documentation=https://github.com/too7kim-sys/ai-callcenter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ai-callcenter
+Group=ai-callcenter
+WorkingDirectory=/data/projects/ai-callcenter
+EnvironmentFile=/data/projects/ai-callcenter/.env
+# 단일 워커 — 인메모리 상태(캐시·이상감지·레이트리미트·SSE 브로커·메트릭)가 공유.
+# 멀티 워커가 필요하면 Redis 등 외부 저장소로 먼저 마이그레이션 후 변경.
+ExecStart=/data/projects/ai-callcenter/.venv/bin/python -m uvicorn app.main:app \
+          --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers \
+          --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-callcenter
+
+# 보안 강화
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+# DB·백업·캐시 쓰기를 위해 워킹 디렉토리는 쓰기 허용
+ReadWritePaths=/data/projects/ai-callcenter
+
+# 리소스 한계 — VPS 사양에 맞춰 조정
+LimitNOFILE=4096
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
