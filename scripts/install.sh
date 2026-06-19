@@ -24,13 +24,22 @@ set -euo pipefail
 
 APP_USER=${APP_USER:-ai-callcenter}
 APP_DIR=${APP_DIR:-/data/projects/ai-callcenter}
-APP_BRANCH=${APP_BRANCH:-main}
+APP_BRANCH=${APP_BRANCH:-}    # 비워두면 remote 기본 브랜치 자동 감지
 PYTHON=${PYTHON:-python3}
 GIT_URL=${1:-}
 
 log()  { echo -e "\033[1;34m[install]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[install]\033[0m $*"; }
 err()  { echo -e "\033[1;31m[install]\033[0m $*" >&2; }
+
+
+# remote 의 HEAD 가 가리키는 기본 브랜치를 알아낸다 (main / master / 그 외).
+# 실패하면 빈 문자열을 반환 — 호출자가 폴백 처리.
+detect_default_branch() {
+    local url="$1"
+    git ls-remote --symref "$url" HEAD 2>/dev/null \
+        | awk '/^ref:/ {sub("refs/heads/","",$2); print $2; exit}'
+}
 
 if [[ $EUID -ne 0 ]]; then
     err "root 권한이 필요합니다. sudo 로 실행해 주세요."
@@ -58,30 +67,51 @@ mkdir -p "$(dirname "$APP_DIR")"
 chown -R "$APP_USER:$APP_USER" "$(dirname "$APP_DIR")" 2>/dev/null || true
 
 # ---------- 3. 소스 코드 ----------
+# git URL 결정 (인수 우선 → 현재 디렉토리의 origin)
+if [[ -z "$GIT_URL" ]]; then
+    CURRENT=$(pwd)
+    if [[ -d "$CURRENT/.git" ]]; then
+        GIT_URL=$(git -C "$CURRENT" remote get-url origin 2>/dev/null || true)
+    fi
+fi
+
+# 기존 저장소가 있으면 그것의 현재 브랜치 사용, 아니면 remote 감지
 if [[ -d "$APP_DIR/.git" ]]; then
-    log "기존 저장소 발견 — git pull"
+    CURRENT_BRANCH=$(sudo -u "$APP_USER" -H git -C "$APP_DIR" symbolic-ref --short HEAD 2>/dev/null || echo "")
+    APP_BRANCH=${APP_BRANCH:-$CURRENT_BRANCH}
+    if [[ -z "$APP_BRANCH" ]]; then
+        err "기존 저장소의 현재 브랜치를 알 수 없습니다. APP_BRANCH 를 지정하세요."
+        exit 1
+    fi
+    log "기존 저장소 발견 — git pull (branch=$APP_BRANCH)"
     sudo -u "$APP_USER" -H git -C "$APP_DIR" fetch --quiet origin
     sudo -u "$APP_USER" -H git -C "$APP_DIR" checkout --quiet "$APP_BRANCH"
     sudo -u "$APP_USER" -H git -C "$APP_DIR" pull --quiet --ff-only origin "$APP_BRANCH"
 elif [[ -n "$GIT_URL" ]]; then
-    log "git clone $GIT_URL → $APP_DIR"
-    sudo -u "$APP_USER" -H git clone --branch "$APP_BRANCH" --depth 50 "$GIT_URL" "$APP_DIR"
-else
-    # 현재 디렉토리가 git 저장소면 그것을 origin 으로
-    CURRENT=$(pwd)
-    if [[ -d "$CURRENT/.git" ]]; then
-        REMOTE=$(git -C "$CURRENT" remote get-url origin 2>/dev/null || true)
-        if [[ -n "$REMOTE" ]]; then
-            log "현재 origin($REMOTE) 으로 clone"
-            sudo -u "$APP_USER" -H git clone --branch "$APP_BRANCH" --depth 50 "$REMOTE" "$APP_DIR"
-        else
-            err "git URL 을 인수로 지정하거나, 이미 clone 된 디렉토리에서 실행해 주세요."
+    if [[ -z "$APP_BRANCH" ]]; then
+        APP_BRANCH=$(detect_default_branch "$GIT_URL")
+        if [[ -z "$APP_BRANCH" ]]; then
+            err "remote 의 기본 브랜치를 감지할 수 없습니다. APP_BRANCH=<브랜치명> 으로 지정하세요."
+            err "예: sudo APP_BRANCH=claude/ai-call-center-app-1fek8 bash $0 $GIT_URL"
             exit 1
         fi
-    else
-        err "git URL 을 첫 번째 인수로 지정해 주세요: sudo bash scripts/install.sh https://…"
-        exit 1
+        log "remote 기본 브랜치 감지: $APP_BRANCH"
     fi
+    log "git clone $GIT_URL (branch=$APP_BRANCH) → $APP_DIR"
+    # APP_DIR 가 빈 디렉토리거나 부분적으로 채워졌으면 정리
+    if [[ -d "$APP_DIR" ]]; then
+        if [[ -z "$(ls -A "$APP_DIR" 2>/dev/null)" ]]; then
+            rmdir "$APP_DIR"
+        else
+            err "$APP_DIR 가 비어있지 않습니다 (이전 시도 잔여물?). 수동으로 정리 후 재시도하세요:"
+            err "  sudo rm -rf $APP_DIR"
+            exit 1
+        fi
+    fi
+    sudo -u "$APP_USER" -H git clone --branch "$APP_BRANCH" --depth 50 "$GIT_URL" "$APP_DIR"
+else
+    err "git URL 을 첫 번째 인수로 지정해 주세요: sudo bash scripts/install.sh https://…"
+    exit 1
 fi
 
 # ---------- 4. Python 가상환경 + 의존성 ----------

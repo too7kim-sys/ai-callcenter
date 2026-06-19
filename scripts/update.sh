@@ -14,7 +14,8 @@ set -euo pipefail
 
 APP_USER=${APP_USER:-ai-callcenter}
 APP_DIR=${APP_DIR:-/data/projects/ai-callcenter}
-APP_BRANCH=${APP_BRANCH:-main}
+# 미지정 시 현재 체크아웃된 브랜치 사용
+APP_BRANCH=${APP_BRANCH:-$(git -C "${APP_DIR}" symbolic-ref --short HEAD 2>/dev/null || echo main)}
 
 log()  { echo -e "\033[1;34m[update]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[update]\033[0m $*"; }
