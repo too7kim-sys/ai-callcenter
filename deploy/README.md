@@ -49,15 +49,30 @@ Internet ─► nginx (443/HTTPS) ─► uvicorn (127.0.0.1:8000) ─► FastAPI
 
 ## 일상 운영
 
-### 업데이트
+### 서비스 제어 (간편 스크립트)
 ```bash
-sudo bash /data/projects/ai-callcenter/scripts/update.sh
-```
-1. `git pull --ff-only` (워킹 트리 dirty 면 멈춤)
-2. `requirements.txt` 가 바뀌었을 때만 `pip install`
-3. `systemctl restart` + `/healthz` 대기
+cd /data/projects/ai-callcenter
 
-### 상태 확인
+sudo bash scripts/start.sh      # 시작 + /healthz 대기
+sudo bash scripts/stop.sh       # 정지
+sudo bash scripts/restart.sh    # 재시작 + /healthz 대기
+bash      scripts/status.sh     # 서비스 + 헬스 + 포트 + 최근 로그 한눈에
+sudo bash scripts/update.sh     # GitHub pull → 의존성 동기화 → 재시작
+```
+
+내부 동작은 모두 `systemctl <action> ai-callcenter` 의 얇은 래퍼 + 헬스체크 + 친절한 출력.
+
+### 업데이트 자세히
+`scripts/update.sh` 가 하는 일:
+1. `git fetch origin <현재 브랜치>` — 로컬 브랜치 자동 인식
+2. 워킹 트리 dirty 면 중단 (예상치 못한 변경 보호)
+3. 새 커밋이 없으면 재시작도 하지 않고 종료 (no-op)
+4. `git pull --ff-only`
+5. 받은 새 커밋 목록을 화면에 출력
+6. `requirements.txt` 가 바뀌었을 때만 `pip install`
+7. `systemctl restart` + `/healthz` 대기 (최대 15초)
+
+### 상태 확인 (저수준)
 ```bash
 systemctl status ai-callcenter
 journalctl -u ai-callcenter -f      # 실시간 로그
