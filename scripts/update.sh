@@ -18,8 +18,8 @@ set -euo pipefail
 APP_USER=${APP_USER:-ai-callcenter}
 APP_DIR=${APP_DIR:-/data/projects/ai-callcenter}
 SERVICE=${SERVICE:-ai-callcenter}
-# 미지정 시 현재 체크아웃된 브랜치 사용
-APP_BRANCH=${APP_BRANCH:-$(git -C "${APP_DIR}" symbolic-ref --short HEAD 2>/dev/null || echo main)}
+# APP_BRANCH 는 root 권한 검증 + safe.directory 등록 후에 자동 감지.
+APP_BRANCH=${APP_BRANCH:-}
 
 log()  { echo -e "\033[1;34m[update]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[update]\033[0m $*"; }
@@ -32,6 +32,21 @@ fi
 if [[ ! -d "$APP_DIR/.git" ]]; then
     err "$APP_DIR 에 git 저장소가 없습니다. 먼저 install.sh 를 실행하세요."
     exit 1
+fi
+
+# git 이 'detected dubious ownership' 으로 거부하지 않도록 root 와 APP_USER
+# 양쪽에 safe.directory 등록 (이미 등록돼 있으면 무해).
+git config --global --add safe.directory "$APP_DIR" >/dev/null 2>&1 || true
+sudo -u "$APP_USER" -H git config --global --add safe.directory "$APP_DIR" >/dev/null 2>&1 || true
+
+# APP_BRANCH 자동 감지 — APP_USER 로 실행해야 권한·소유권 충돌 없음.
+if [[ -z "$APP_BRANCH" ]]; then
+    APP_BRANCH=$(sudo -u "$APP_USER" -H git -C "$APP_DIR" symbolic-ref --short HEAD 2>/dev/null || true)
+    if [[ -z "$APP_BRANCH" ]]; then
+        err "현재 브랜치를 감지할 수 없습니다 (HEAD detached?). APP_BRANCH=<브랜치명> 으로 지정하세요."
+        err "확인: sudo -u $APP_USER git -C $APP_DIR status"
+        exit 1
+    fi
 fi
 
 # 변경 전 상태 기록 — 의존성·새 커밋 여부 판단

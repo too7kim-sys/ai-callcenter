@@ -75,6 +75,12 @@ if [[ -z "$GIT_URL" ]]; then
     fi
 fi
 
+# git 'detected dubious ownership' 회피 — root 와 APP_USER 양쪽에 등록.
+git config --global --add safe.directory "$APP_DIR" >/dev/null 2>&1 || true
+if id "$APP_USER" >/dev/null 2>&1; then
+    sudo -u "$APP_USER" -H git config --global --add safe.directory "$APP_DIR" >/dev/null 2>&1 || true
+fi
+
 # 기존 저장소가 있으면 그것의 현재 브랜치 사용, 아니면 remote 감지
 if [[ -d "$APP_DIR/.git" ]]; then
     CURRENT_BRANCH=$(sudo -u "$APP_USER" -H git -C "$APP_DIR" symbolic-ref --short HEAD 2>/dev/null || echo "")
