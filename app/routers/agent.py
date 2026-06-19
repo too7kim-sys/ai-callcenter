@@ -7,7 +7,7 @@ import tempfile
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session, selectinload
 
-from .. import ai, anomaly, audit, auth, cache, faq, knowledge, masking, metrics, notifier, realtime, voice
+from .. import ai, anomaly, audit, auth, cache, faq, ip_allowlist, knowledge, masking, metrics, notifier, realtime, voice
 from ..database import get_db
 from ..models import AgentUser, Conversation, ConversationNote, KnowledgeItem, Message, ReplyTemplate
 from ..permissions import P
@@ -364,6 +364,16 @@ def cache_clear(
         removed = cache.clear_all()
     audit.log(db, user, "cache.clear", details={"prefix": prefix or "*", "removed": removed})
     return {"ok": True, "removed": removed}
+
+
+@router.get("/security/ip_allowlist")
+def ip_allowlist_status(_user=Depends(auth.require_permission(P.AUDIT_VIEW))):
+    """IP 화이트리스트 설정 상태 (ALLOWED_IPS).
+
+    enabled=false 면 모든 IP 허용 (운영 시 enabled=true 권장).
+    설정 변경은 .env 의 ALLOWED_IPS 수정 + systemctl restart.
+    """
+    return ip_allowlist.status()
 
 
 @router.get("/security/anomaly")

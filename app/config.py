@@ -72,3 +72,13 @@ try:
     BUSINESS_END_HOUR = int(os.getenv("BUSINESS_END_HOUR", "18") or 18)
 except ValueError:
     BUSINESS_END_HOUR = 18
+
+# --- 네트워크 / IP 화이트리스트 ---
+# uvicorn 바인딩은 ai-callcenter.service 에서 사용 — 여기서는 값만 노출.
+BIND_HOST = os.getenv("BIND_HOST", "127.0.0.1").strip() or "127.0.0.1"
+try:
+    BIND_PORT = int(os.getenv("BIND_PORT", "8000") or 8000)
+except ValueError:
+    BIND_PORT = 8000
+TRUSTED_PROXY_IPS = os.getenv("TRUSTED_PROXY_IPS", "127.0.0.1").strip()
+ALLOWED_IPS = os.getenv("ALLOWED_IPS", "").strip()

@@ -2,6 +2,13 @@
 
 대상 경로: `/data/projects/ai-callcenter/`
 
+**가정**: nginx 는 **별도 서버**에서 이미 운영 중. 이 백엔드 서버는 nginx 서버에서만 접근 가능하도록 `ALLOWED_IPS` 로 IP 제한.
+
+```
+[ Internet ] ─► [ 별도 nginx 서버 ] ─► [ 이 백엔드 ai-callcenter:8000 ]
+                                       ALLOWED_IPS 로 nginx 서버 IP 만 허용
+```
+
 ## 빠른 시작 (Ubuntu 20.04 / 22.04 / 24.04)
 
 ```bash
@@ -14,6 +21,12 @@ sudo bash scripts/install.sh https://github.com/too7kim-sys/ai-callcenter.git
 ```
 
 설치 후 화면에 출력되는 **초기 admin 비밀번호**를 기록하세요. 이후 표시되지 않습니다.
+
+설치 직후 반드시 `.env` 의 `ALLOWED_IPS`·`TRUSTED_PROXY_IPS`·`APP_BASE_URL` 채우고 재시작:
+```bash
+sudo -u ai-callcenter $EDITOR /data/projects/ai-callcenter/.env
+sudo systemctl restart ai-callcenter
+```
 
 ## 배포되는 것들
 
@@ -75,27 +88,65 @@ sudo systemctl restart ai-callcenter
 - `/api/admin/metrics` (JSON)
 - `/api/admin/cache/clear` — 캐시 강제 비우기
 
-## HTTPS 활성화 (필수)
+## 네트워크 차단 (IP 화이트리스트)
 
-WebRTC 통화·STT 마이크·PWA 설치 모두 **HTTPS 가 필수**입니다.
+이 백엔드는 외부망에 노출되지 않게 두 단계로 잠급니다.
+
+**1단계 — 앱 레벨 (이 저장소)**: `.env` 의 `ALLOWED_IPS` 에 nginx 서버 IP + 사내망 등 허용 IP/CIDR 만 나열. 빈 값이면 누구나 접근 가능하므로 운영에선 반드시 채울 것.
+
+```ini
+# .env
+BIND_HOST=0.0.0.0
+BIND_PORT=8000
+
+# nginx 서버 IP (다중이면 콤마)
+TRUSTED_PROXY_IPS=10.0.0.5
+
+# 허용 IP/CIDR — nginx 서버 + 사내 점검용 등
+ALLOWED_IPS=10.0.0.5/32,192.168.0.0/24
+```
+
+설정 확인 (admin 로그인 후):
+```
+GET /api/admin/security/ip_allowlist
+```
+
+**2단계 — OS 방화벽 (강력 권장)**: 같은 IP 만 8000 포트로 들어오도록 OS 가 차단:
+```bash
+sudo ufw default deny incoming
+sudo ufw allow ssh
+sudo ufw allow from 10.0.0.5 to any port 8000   # nginx 서버
+sudo ufw allow from 192.168.0.0/24 to any port 8000  # 사내망 점검
+sudo ufw enable
+```
+
+`/healthz`, `/readyz` 는 IP 화이트리스트의 영향을 받지 않으므로 외부 모니터링 도구도 정상 동작합니다.
+
+## nginx (별도 서버) 설정 참고
+
+이 저장소의 `deploy/nginx.conf.example` 을 **별도 nginx 서버**로 복사·수정해 사용합니다 (이 백엔드 서버에는 nginx 설치 X).
 
 ```bash
-# 1) nginx 설정 복사 + 도메인 치환
-sudo cp /data/projects/ai-callcenter/deploy/nginx.conf.example \
+# nginx 서버에서:
+sudo cp /tmp/nginx.conf.example /etc/nginx/sites-available/ai-callcenter
+
+# upstream 대상을 이 백엔드 서버의 내부 IP 로:
+sudo sed -i 's|server 127.0.0.1:8000;|server <백엔드-IP>:8000;|' \
         /etc/nginx/sites-available/ai-callcenter
 sudo sed -i 's/callcenter.example.com/your-domain.com/g' \
         /etc/nginx/sites-available/ai-callcenter
 
-# 2) 활성화
 sudo ln -sf /etc/nginx/sites-available/ai-callcenter /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 
-# 3) Let's Encrypt 인증서 자동 발급
+# Let's Encrypt 인증서:
 sudo apt install certbot python3-certbot-nginx
 sudo certbot --nginx -d your-domain.com
 ```
 
-설정 후 `.env` 의 `APP_BASE_URL=https://your-domain.com` 갱신 → `systemctl restart`.
+WebRTC 통화·STT·PWA 설치는 모두 **HTTPS 필수**이므로 nginx 서버에서 반드시 인증서 발급.
+
+설정 후 백엔드의 `.env` 의 `APP_BASE_URL=https://your-domain.com` 갱신 → `systemctl restart`.
 
 ## 보안 체크리스트
 
@@ -103,11 +154,13 @@ sudo certbot --nginx -d your-domain.com
 
 - [ ] 초기 admin 비밀번호로 로그인 → `/security` 에서 **변경**
 - [ ] **2FA 활성화** (Google Authenticator 등록)
+- [ ] `.env` 의 `ALLOWED_IPS` + `TRUSTED_PROXY_IPS` 채움 (필수!)
 - [ ] `.env` 의 `ANTHROPIC_API_KEY` (사용 시) / `SMTP_PASSWORD` / `HF_TOKEN` 설정
 - [ ] `ALERT_WEBHOOK_URL` 에 Slack 등 채널 연결
-- [ ] HTTPS 활성화 + `APP_BASE_URL` 업데이트
-- [ ] 방화벽: `80, 443` 외 전부 차단 (`ufw enable`)
+- [ ] nginx 서버에서 HTTPS 활성화 + 백엔드 `.env` 의 `APP_BASE_URL` 업데이트
+- [ ] OS 방화벽 (`ufw`) 로 8000 포트도 nginx 서버 IP 만 허용
 - [ ] 자동 백업이 동작하는지 1일 후 `backups/` 확인
+- [ ] `GET /api/admin/security/ip_allowlist` 로 화이트리스트 설정 검증
 
 ## 멀티 워커 / 수평 확장 (선택)
 

@@ -12,9 +12,16 @@ WorkingDirectory=/data/projects/ai-callcenter
 EnvironmentFile=/data/projects/ai-callcenter/.env
 # 단일 워커 — 인메모리 상태(캐시·이상감지·레이트리미트·SSE 브로커·메트릭)가 공유.
 # 멀티 워커가 필요하면 Redis 등 외부 저장소로 먼저 마이그레이션 후 변경.
+#
+# 바인딩 주소·포트·신뢰 프록시는 .env 의 환경변수로 통제:
+#   BIND_HOST           — 0.0.0.0 (다른 서버의 nginx 가 접근) / 127.0.0.1 (로컬만)
+#   BIND_PORT           — 기본 8000
+#   TRUSTED_PROXY_IPS   — X-Forwarded-For 를 신뢰할 프록시 IP (콤마 구분)
+#                         예: nginx 서버 IP. ALLOWED_IPS 검사가 실제 클라이언트
+#                         IP 를 사용하려면 이 값이 정확해야 함.
 ExecStart=/data/projects/ai-callcenter/.venv/bin/python -m uvicorn app.main:app \
-          --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers \
-          --forwarded-allow-ips=127.0.0.1
+          --host ${BIND_HOST} --port ${BIND_PORT} --workers 1 \
+          --proxy-headers --forwarded-allow-ips=${TRUSTED_PROXY_IPS}
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=20

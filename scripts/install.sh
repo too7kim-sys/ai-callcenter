@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # AI 콜센터 — 운영 서버 1회 설치 스크립트 (Ubuntu/Debian).
 #
-# 다음을 자동으로 수행:
+# 가정:
+#   • nginx 는 별도 서버에 이미 운영 중 → 여기선 설치하지 않음
+#   • 이 백엔드 서버는 nginx 서버에서만 접근 (ALLOWED_IPS 로 IP 제한)
+#
+# 자동 수행:
 #   1. 시스템 패키지 (python3, ffmpeg, espeak-ng) 설치
 #   2. 전용 사용자 ai-callcenter 생성
 #   3. /data/projects/ai-callcenter 에 git clone (있으면 pull)
 #   4. .venv 생성 + 의존성 설치
 #   5. .env 가 없으면 deploy/env.production.example 복사 + 랜덤 admin 비번
 #   6. systemd 유닛 설치 + 시작
-#   7. nginx 사이트 설정 안내
+#   7. nginx 서버 IP 입력 안내 (ALLOWED_IPS / TRUSTED_PROXY_IPS)
 #
 # 멱등 — 안전하게 재실행 가능.
 #
@@ -34,13 +38,14 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # ---------- 1. 시스템 패키지 ----------
-log "시스템 패키지 확인 (python3-venv, ffmpeg, espeak-ng, nginx)…"
+# nginx 는 별도 서버에서 운영 — 여기서는 설치 안 함.
+log "시스템 패키지 확인 (python3-venv, ffmpeg, espeak-ng)…"
 apt-get update -qq
 apt-get install -y --no-install-recommends \
     python3 python3-venv python3-pip \
     ffmpeg espeak-ng \
-    git ca-certificates curl \
-    nginx >/dev/null 2>&1 || warn "일부 패키지 설치 실패 — 이미 설치돼 있으면 무시"
+    git ca-certificates curl >/dev/null 2>&1 \
+    || warn "일부 패키지 설치 실패 — 이미 설치돼 있으면 무시"
 
 # ---------- 2. 사용자 + 디렉토리 ----------
 if ! id "$APP_USER" >/dev/null 2>&1; then
@@ -140,19 +145,31 @@ cat <<EOF
   업데이트:
     sudo bash $APP_DIR/scripts/update.sh
 
-  nginx (HTTPS) 활성화:
-    sudo cp $APP_DIR/deploy/nginx.conf.example /etc/nginx/sites-available/ai-callcenter
-    # 도메인을 callcenter.example.com 에서 실제 값으로 치환
-    sudo \$EDITOR /etc/nginx/sites-available/ai-callcenter
-    sudo ln -sf /etc/nginx/sites-available/ai-callcenter /etc/nginx/sites-enabled/
-    sudo nginx -t && sudo systemctl reload nginx
-    # Let's Encrypt 인증서:
-    sudo apt install certbot python3-certbot-nginx
-    sudo certbot --nginx -d your-domain.example.com
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  ⚠  반드시 설정해야 할 항목 ($APP_DIR/.env)
+  │
+  │  1) ALLOWED_IPS       — nginx 서버 IP + 사내망 등 허용 IP/CIDR
+  │     예: ALLOWED_IPS=10.0.0.5/32,192.168.0.0/24
+  │     빈 값이면 누구나 접근 가능 — 운영에선 반드시 설정!
+  │
+  │  2) TRUSTED_PROXY_IPS — X-Forwarded-For 신뢰할 프록시 IP (nginx 서버)
+  │     예: TRUSTED_PROXY_IPS=10.0.0.5
+  │     이 값이 정확해야 ALLOWED_IPS 가 실제 클라이언트 IP 를 평가함
+  │
+  │  3) APP_BASE_URL      — 외부에 노출되는 도메인 (https 포함)
+  │     예: APP_BASE_URL=https://callcenter.example.com
+  │
+  │  편집 후: sudo systemctl restart ai-callcenter
+  └─────────────────────────────────────────────────────────────────┘
 
-  앱 설정 변경:
-    sudo \$EDITOR $APP_DIR/.env
-    sudo systemctl restart ai-callcenter
+  nginx (별도 서버) 설정 참고:
+    이 저장소의 deploy/nginx.conf.example 을 nginx 서버에 복사·수정.
+    핵심: proxy_pass http://<백엔드-서버-IP>:8000;
+          SSE 경로(/api/events/stream)는 proxy_buffering off + 24h timeout.
+
+  앱 상태 확인:
+    curl -fsS http://127.0.0.1:8000/healthz    # 항상 200 (IP 검사 우회)
+    curl -fsS http://127.0.0.1:8000/readyz     # DB 까지 ping
 
   DB 백업 위치: $APP_DIR/backups/
   로그:          journalctl -u ai-callcenter

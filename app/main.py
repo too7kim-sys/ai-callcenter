@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 import time
 
-from . import accounts, ai, auth, backup, config, faq, metrics
+from . import accounts, ai, auth, backup, config, faq, ip_allowlist, metrics
 from .database import Base, engine
 from .security_headers import SecurityHeadersMiddleware
 from .routers import agent, callback, calls, categories, chat, evaluations, experiments, password
@@ -93,8 +93,17 @@ auth.seed_admin()
 faq.init_db()          # FAQ 시드 + 캐시 로딩
 backup.start_scheduler()  # 자동 백업 데몬 (BACKUP_ENABLED=false 면 no-op)
 
+# IP 화이트리스트 초기화 (ALLOWED_IPS 환경변수). 빈 값이면 미들웨어가 no-op.
+ip_allowlist.configure(os.getenv("ALLOWED_IPS", ""))
+
+
 app = FastAPI(title="AI 콜센터", version="1.0.0")
+# 미들웨어 등록 순서: dispatch 는 LIFO → 마지막 add_middleware 가 먼저 실행.
+# IpAllowlist 를 가장 앞단(가장 먼저 실행)에 두려면 가장 마지막에 add.
+# 현재 순서: 응답 시 SecurityHeaders 적용 → 요청 시 metrics → 요청 시 IpAllowlist 차단
 app.add_middleware(SecurityHeadersMiddleware)
+# IP 화이트리스트 — 모든 핸들러보다 먼저 실행되도록 마지막에 add
+app.add_middleware(ip_allowlist.IpAllowlistMiddleware)
 
 
 @app.middleware("http")
