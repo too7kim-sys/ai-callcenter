@@ -19,9 +19,11 @@
 """
 from __future__ import annotations
 
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from .. import audit, auth, ratelimit, realtime
@@ -63,9 +65,9 @@ def _sweep_stale(db: Session) -> int:
     return len(stale)
 
 
-def _serialize(call: Call, db: Session) -> dict:
+def _serialize(call: Call, db: Session, include_token: bool = False) -> dict:
     agent = db.get(AgentUser, call.assigned_agent_id) if call.assigned_agent_id else None
-    return {
+    data = {
         "id": call.id,
         "conversation_id": call.conversation_id,
         "status": call.status,
@@ -78,6 +80,11 @@ def _serialize(call: Call, db: Session) -> dict:
         "duration_seconds": call.duration_seconds,
         "end_reason": call.end_reason,
     }
+    # customer_token 은 호출자에게 한 번만 노출 (반환 시 include_token=True).
+    # /active, /recent 등 일반 조회에서는 절대 노출 안 함.
+    if include_token:
+        data["customer_token"] = call.customer_token
+    return data
 
 
 @router.post(
@@ -100,10 +107,13 @@ def request_call(payload: CallRequest, db: Session = Depends(get_db)):
           .first()
     )
     if existing is not None:
-        return _serialize(existing, db)
+        # 기존 토큰 그대로 반환 — 동일 고객의 새로고침/재시도 시 동작 유지
+        return _serialize(existing, db, include_token=True)
 
     name = (payload.customer_name or conv.customer_name or "고객").strip() or "고객"
-    call = Call(conversation_id=conv.id, customer_name=name)
+    # 익명 고객용 1회용 토큰 — /signal 권한 검증에 사용. 추측 불가한 URL-safe 문자열.
+    customer_token = secrets.token_urlsafe(24)
+    call = Call(conversation_id=conv.id, customer_name=name, customer_token=customer_token)
     db.add(call)
     db.commit()
     db.refresh(call)
@@ -114,7 +124,7 @@ def request_call(payload: CallRequest, db: Session = Depends(get_db)):
         "conversation_id": conv.id,
         "customer_name": name,
     })
-    return _serialize(call, db)
+    return _serialize(call, db, include_token=True)
 
 
 @router.post("/{call_id}/answer")
@@ -123,17 +133,29 @@ def answer_call(
     db: Session = Depends(get_db),
     user=Depends(auth.require_permission(P.CONV_VIEW)),
 ):
-    """상담원이 통화 응답. 첫 응답자만 성공 (이미 답변/종료 시 409)."""
+    """상담원이 통화 응답. 첫 응답자만 성공 — 두 명이 동시에 받기 눌러도
+    원자적 UPDATE 로 한 명만 200, 나머지는 409.
+    """
     _sweep_stale(db)
-    call = db.get(Call, call_id)
-    if call is None:
-        raise HTTPException(status_code=404, detail="통화를 찾을 수 없습니다.")
-    if call.status != "requesting":
-        raise HTTPException(status_code=409, detail=f"이미 처리된 통화입니다 (상태: {call.status})")
-    call.status = "answered"
-    call.assigned_agent_id = user.id
-    call.answered_at = datetime.now(timezone.utc)
+    # 'status==requesting' 조건이 들어간 단일 UPDATE — 두 트랜잭션이 동시에
+    # 실행돼도 SQLite 가 직렬화하므로 둘 중 하나만 rowcount=1, 다른 하나는 0.
+    now_ts = datetime.now(timezone.utc)
+    result = db.execute(
+        update(Call)
+        .where(Call.id == call_id, Call.status == "requesting")
+        .values(status="answered", assigned_agent_id=user.id, answered_at=now_ts)
+    )
     db.commit()
+    if result.rowcount == 0:
+        # 통화 자체가 없는지 / 이미 다른 사람이 받았는지 구분해 메시지 명확화
+        call_check = db.get(Call, call_id)
+        if call_check is None:
+            raise HTTPException(status_code=404, detail="통화를 찾을 수 없습니다.")
+        raise HTTPException(
+            status_code=409,
+            detail=f"이미 처리된 통화입니다 (상태: {call_check.status})",
+        )
+    call = db.get(Call, call_id)
     audit.log(db, user, "call.answer", target_type="call", target_id=call.id)
     realtime.publish({
         "type": "call_answered",
@@ -142,7 +164,6 @@ def answer_call(
         "agent_id": user.id,
         "agent_name": user.name or user.username,
     })
-    db.refresh(call)
     return _serialize(call, db)
 
 
@@ -152,16 +173,20 @@ def reject_call(
     db: Session = Depends(get_db),
     user=Depends(auth.require_permission(P.CONV_VIEW)),
 ):
-    """상담원이 명시적으로 거절 — 통화를 missed 로 종료."""
-    call = db.get(Call, call_id)
-    if call is None:
-        raise HTTPException(status_code=404, detail="통화를 찾을 수 없습니다.")
-    if call.status != "requesting":
-        raise HTTPException(status_code=409, detail="이미 처리된 통화입니다.")
-    call.status = "ended"
-    call.ended_at = datetime.now(timezone.utc)
-    call.end_reason = "rejected"
+    """상담원이 명시적으로 거절 — 통화를 missed 로 종료. 원자적 UPDATE."""
+    now_ts = datetime.now(timezone.utc)
+    result = db.execute(
+        update(Call)
+        .where(Call.id == call_id, Call.status == "requesting")
+        .values(status="ended", ended_at=now_ts, end_reason="rejected")
+    )
     db.commit()
+    if result.rowcount == 0:
+        call_check = db.get(Call, call_id)
+        if call_check is None:
+            raise HTTPException(status_code=404, detail="통화를 찾을 수 없습니다.")
+        raise HTTPException(status_code=409, detail="이미 처리된 통화입니다.")
+    call = db.get(Call, call_id)
     audit.log(db, user, "call.reject", target_type="call", target_id=call.id)
     realtime.publish({
         "type": "call_ended",
@@ -181,9 +206,12 @@ def signal_call(
 ):
     """WebRTC 시그널링 중계 (offer / answer / ICE candidate / hangup).
 
+    권한:
+      • 상담원: 통화의 assigned_agent 본인 (세션 쿠키)
+      • 고객  : /calls/request 응답으로 받은 customer_token 보유
+
     서버는 payload 내용을 해석하지 않고 같은 conversation 의 반대편으로
-    SSE 'call_signal' 이벤트로 그대로 forward. 'from' 필드는 세션 쿠키
-    유무로 자동 판별: 인증 쿠키가 있으면 'agent', 없으면 'customer'.
+    SSE 'call_signal' 이벤트로 그대로 forward.
     """
     call = db.get(Call, call_id)
     if call is None:
@@ -191,7 +219,26 @@ def signal_call(
     if call.status not in ("requesting", "answered"):
         raise HTTPException(status_code=409, detail="활성 통화가 아닙니다.")
 
-    role = _from_role(request, db)
+    # 1. 상담원 인증 시도 (세션 쿠키)
+    agent_user = _get_authenticated_user(request, db)
+    if agent_user is not None:
+        # 통화의 배정 상담원만 시그널 허용 — 배정 전이거나 다른 상담원이면 거부
+        if call.assigned_agent_id is not None and call.assigned_agent_id != agent_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="이 통화의 담당 상담원이 아닙니다.",
+            )
+        role = "agent"
+    else:
+        # 2. 고객 토큰 검증 — 통화 요청 시 발급된 비공개 토큰 일치 필수
+        token = (payload.customer_token or "").strip()
+        if not token or not call.customer_token or not secrets.compare_digest(token, call.customer_token):
+            raise HTTPException(
+                status_code=401,
+                detail="인증되지 않은 시그널 요청입니다.",
+            )
+        role = "customer"
+
     realtime.publish({
         "type": "call_signal",
         "call_id": call.id,
@@ -271,20 +318,24 @@ def list_recent_calls(
     return [_serialize(c, db) for c in rows]
 
 
-def _from_role(request: Request, db: Session) -> str:
-    """/signal 호출자의 'from' 라벨 — 인증 쿠키 보유 시 'agent', 아니면 'customer'.
+def _get_authenticated_user(request: Request, db: Session) -> AgentUser | None:
+    """세션 쿠키로 인증된 AgentUser 반환. 없거나 만료면 None.
 
-    예외를 던지지 않는 가벼운 검증 (current_user 의존성과 분리해 익명 호출도 허용).
+    예외를 던지지 않는 가벼운 검증 — current_user 의존성과 분리해 익명/인증
+    혼합 엔드포인트(/calls/signal) 에서 사용.
     """
     token = request.cookies.get(auth.SESSION_COOKIE_NAME)
     if not token:
-        return "customer"
+        return None
     sess = db.query(AgentSession).filter(AgentSession.token == token).first()
     if sess is None or sess.expires_at is None:
-        return "customer"
+        return None
     expires = sess.expires_at
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=timezone.utc)
     if expires < datetime.now(timezone.utc):
-        return "customer"
-    return "agent"
+        return None
+    user = db.get(AgentUser, sess.user_id)
+    if user is None or not user.active:
+        return None
+    return user

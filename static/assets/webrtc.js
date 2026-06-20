@@ -29,6 +29,8 @@
       this.role = opts.role;                    // 'customer' | 'agent'
       this.callId = opts.callId;
       this.conversationId = opts.conversationId;
+      // 익명 고객은 customer_token 으로 /signal 권한 검증. 상담원은 세션 쿠키.
+      this.customerToken = opts.customerToken || null;
       this.onState = opts.onState || (() => {});
       this.onError = opts.onError || (() => {});
       this.pc = null;
@@ -131,11 +133,13 @@
 
     _send(kind, payload) {
       // 시그널링 자체가 막히면 통화 성립 불가 — 실패 시 디버그 로그.
+      const body = { kind, payload };
+      if (this.customerToken) body.customer_token = this.customerToken;
       fetch(`/api/calls/${this.callId}/signal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ kind, payload }),
+        body: JSON.stringify(body),
       }).then((r) => {
         if (!r.ok) console.warn("[call] signal", kind, "→ HTTP", r.status);
       }).catch((e) => {

@@ -567,7 +567,7 @@ function startSse(convId) {
       const data = JSON.parse(e.data || "{}");
       if (data.call_id === _callId) {
         if (_call) _call.cleanup();
-        _call = null; _callId = null;
+        _call = null; _callId = null; _customerToken = null;
         setCallStatus("", false);
         const d = data.duration_seconds || 0;
         if (data.reason === "rejected") showNotice("상담원이 통화를 거절했습니다.");
@@ -802,6 +802,7 @@ $("call-hangup-btn").addEventListener("click", () => { if (_call) _call.hangup()
 // --- WebRTC 통화 ---
 let _call = null;
 let _callId = null;
+let _customerToken = null;  // /calls/request 응답으로 받는 1회용 권한 토큰
 
 function setCallStatus(text, show = true, connected = false) {
   const bar = $("call-bar");
@@ -827,6 +828,7 @@ async function requestCall() {
     }
     const call = await r.json();
     _callId = call.id;
+    _customerToken = call.customer_token || null;
     setCallStatus("상담원 호출 중… 잠시만 기다려 주세요.");
     showNotice("☎ 통화 요청을 보냈습니다. 상담원이 받으면 연결됩니다.");
   } catch (e) {
@@ -840,10 +842,14 @@ async function _startCallClient(callId, isCaller) {
     role: "customer",
     callId,
     conversationId,
+    customerToken: _customerToken,
     onState: (s) => {
       if (s === "connecting") setCallStatus("연결 중…", true, false);
       else if (s === "connected") setCallStatus("☎ 통화 중", true, true);
-      else if (s === "ended") { setCallStatus("", false); _call = null; _callId = null; }
+      else if (s === "ended") {
+        setCallStatus("", false);
+        _call = null; _callId = null; _customerToken = null;
+      }
     },
     onError: (e) => showNotice("통화 오류: " + e.message),
   });

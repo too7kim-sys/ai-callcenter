@@ -34,6 +34,13 @@ _PENDING: dict[str, tuple[int, float]] = {}  # token -> (user_id, expires_ts)
 _PENDING_LOCK = threading.Lock()
 _PENDING_TTL_SECS = 300
 
+# /2fa/setup 에서 발급한 비밀(secret) 을 활성화 전까지 인메모리에 임시 보관.
+# 활성화(/2fa/activate) 시 DB 의 user.totp_secret 으로 이전 + DB 에서는 비활성
+# 시점에 절대 노출되지 않음. 활성화 미완료 시 TTL 로 자동 만료.
+_PENDING_SECRETS: dict[int, tuple[str, float]] = {}  # user_id -> (secret, expires_ts)
+_PENDING_SECRETS_LOCK = threading.Lock()
+_PENDING_SECRET_TTL_SECS = 600  # 10분 — QR 스캔 + 첫 코드 입력에 충분
+
 
 def make_secret() -> str:
     return pyotp.random_base32()
@@ -127,6 +134,56 @@ def _cleanup_pending():
     with _PENDING_LOCK:
         for tok in [t for t, (_, exp) in _PENDING.items() if exp < now]:
             _PENDING.pop(tok, None)
+
+
+# --------------------------------------------------------------------
+# /2fa/setup ↔ /2fa/activate 사이 임시 비밀 보관 (DB 미저장)
+# --------------------------------------------------------------------
+
+def stash_pending_secret(user_id: int, secret: str) -> None:
+    """setup 단계 — secret 을 인메모리에 TTL 과 함께 보관."""
+    _cleanup_pending_secrets()
+    with _PENDING_SECRETS_LOCK:
+        _PENDING_SECRETS[user_id] = (secret, time.monotonic() + _PENDING_SECRET_TTL_SECS)
+
+
+def consume_pending_secret(user_id: int) -> str | None:
+    """activate 단계 — 유효한 secret 을 꺼내며 동시에 삭제."""
+    with _PENDING_SECRETS_LOCK:
+        entry = _PENDING_SECRETS.pop(user_id, None)
+    if entry is None:
+        return None
+    secret, expires = entry
+    if time.monotonic() > expires:
+        return None
+    return secret
+
+
+def peek_pending_secret(user_id: int) -> str | None:
+    """setup 화면 새로고침 등으로 다시 setup 호출 시 — 같은 secret 재사용."""
+    with _PENDING_SECRETS_LOCK:
+        entry = _PENDING_SECRETS.get(user_id)
+    if entry is None:
+        return None
+    secret, expires = entry
+    if time.monotonic() > expires:
+        with _PENDING_SECRETS_LOCK:
+            _PENDING_SECRETS.pop(user_id, None)
+        return None
+    return secret
+
+
+def discard_pending_secret(user_id: int) -> None:
+    """사용자가 setup 취소 시 명시적 정리."""
+    with _PENDING_SECRETS_LOCK:
+        _PENDING_SECRETS.pop(user_id, None)
+
+
+def _cleanup_pending_secrets():
+    now = time.monotonic()
+    with _PENDING_SECRETS_LOCK:
+        for uid in [u for u, (_, exp) in _PENDING_SECRETS.items() if exp < now]:
+            _PENDING_SECRETS.pop(uid, None)
 
 
 def _hash(s: str) -> str:

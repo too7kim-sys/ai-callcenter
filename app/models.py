@@ -225,6 +225,9 @@ class Call(Base):
     # requesting → answered → ended (or missed/rejected)
     status = Column(String, default="requesting", index=True)
     customer_name = Column(String, default="고객")
+    # 익명 고객이 자기 통화의 시그널만 보낼 수 있도록 발급되는 1회용 토큰.
+    # /calls/request 응답에만 포함, 이후 클라이언트가 보관 → /signal 에 첨부.
+    customer_token = Column(String, nullable=True)
     assigned_agent_id = Column(Integer, ForeignKey("agent_users.id"), nullable=True, index=True)
     requested_at = Column(DateTime, default=_now, index=True)
     answered_at = Column(DateTime, nullable=True)

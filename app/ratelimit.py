@@ -95,15 +95,27 @@ def _check(key: tuple[str, str], max_requests: int, window_seconds: int):
 
 
 def _maybe_cleanup(now: float):
-    """오래된 빈 버킷 제거 (메모리 누수 방지)."""
+    """비활성/빈 버킷 제거 — 메모리 누수 방지.
+
+    이전 구현은 'not b' (이미 빈) 버킷만 제거했지만, 한 번 접근 후 영영
+    재접근 없는 IP 의 버킷은 stale 타임스탬프만 들고 영구 잔존했다.
+    이제 마지막 항목이 윈도우보다 오래된 버킷은 전체 비우고 제거.
+    """
     global _last_cleanup
     if now - _last_cleanup < _CLEANUP_INTERVAL:
         return
     with _buckets_lock:
         _last_cleanup = now
-        empty = [k for k, b in _buckets.items() if not b]
-        for k in empty:
-            del _buckets[k]
+        stale_keys: list[tuple[str, str]] = []
+        for k, b in _buckets.items():
+            if not b:
+                stale_keys.append(k)
+                continue
+            # 마지막 추가 항목이 가장 큰 윈도우(60초)보다 오래됐으면 비활성으로 간주
+            if b[-1] < now - 3600:
+                stale_keys.append(k)
+        for k in stale_keys:
+            _buckets.pop(k, None)
 
 
 def reset_for_tests():

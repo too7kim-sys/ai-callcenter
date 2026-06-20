@@ -55,6 +55,7 @@ def on_failed_login(db, ip: str | None, username: str, *, stage: str = "password
         count = len(bucket)
     if count >= FAILED_THRESHOLD and _try_cooldown(f"failed:{ip}"):
         _alert_failed(db, ip, count, username, stage)
+    _maybe_gc(now)
     return count
 
 
@@ -75,7 +76,53 @@ def on_login_success(db, user, ip: str | None) -> int:
         _failed.pop(ip, None)
     if distinct >= MULTI_IP_THRESHOLD and _try_cooldown(f"multi:{user.id}"):
         _alert_multi_ip(db, user, list(ips.keys()))
+    _maybe_gc(now)
     return distinct
+
+
+# --------------------------------------------------------------------
+# 메모리 누수 방지 — 빈 버킷 / 만료된 쿨다운 / 비활성 사용자 IP 주기적 정리.
+# 10분에 1회 lazy 청소 (호출자 스레드에서 마지막 청소 후 600초 경과 시).
+# --------------------------------------------------------------------
+_GC_INTERVAL_SECS = 600
+_last_gc_at = 0.0
+_gc_lock = threading.Lock()
+
+
+def _maybe_gc(now: float) -> None:
+    global _last_gc_at
+    with _gc_lock:
+        if now - _last_gc_at < _GC_INTERVAL_SECS:
+            return
+        _last_gc_at = now
+
+    failed_cutoff = now - FAILED_WINDOW_SECS
+    with _failed_lock:
+        empty_ips: list[str] = []
+        for ip, bucket in _failed.items():
+            while bucket and bucket[0] < failed_cutoff:
+                bucket.popleft()
+            if not bucket:
+                empty_ips.append(ip)
+        for ip in empty_ips:
+            _failed.pop(ip, None)
+
+    user_cutoff = now - MULTI_IP_WINDOW_SECS
+    with _user_lock:
+        empty_users: list[int] = []
+        for uid, ips in _user_ips.items():
+            for k in [k for k, t in ips.items() if t < user_cutoff]:
+                ips.pop(k, None)
+            if not ips:
+                empty_users.append(uid)
+        for uid in empty_users:
+            _user_ips.pop(uid, None)
+
+    cooldown_cutoff = now - 2 * ALERT_COOLDOWN_SECS
+    with _cooldown_lock:
+        expired = [k for k, t in _alert_cooldown.items() if t < cooldown_cutoff]
+        for k in expired:
+            _alert_cooldown.pop(k, None)
 
 
 def _try_cooldown(key: str) -> bool:

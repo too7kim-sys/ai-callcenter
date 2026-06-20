@@ -69,6 +69,9 @@ def _ensure_columns():
             ("totp_enabled", "BOOLEAN DEFAULT 0"),
             ("totp_recovery", "TEXT"),
         ],
+        "calls": [
+            ("customer_token", "VARCHAR"),
+        ],
     }
     for table, cols in expected.items():
         if table not in insp.get_table_names():

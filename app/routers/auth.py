@@ -139,15 +139,20 @@ def me(user=Depends(auth.current_user), db: Session = Depends(get_db)):
 def twofa_setup(user=Depends(auth.current_user), db: Session = Depends(get_db)):
     """1단계 — 비밀(secret) 생성 + 프로비저닝 URI + QR SVG 반환.
 
-    호출자는 이 비밀을 인증기 앱에 등록하고, /2fa/activate 에 6자리 코드를
-    보내야 실제 활성화된다. 활성화 전까지는 totp_enabled=False 유지.
+    비밀은 **DB에 저장하지 않고** 인메모리에 10분 TTL 로 임시 보관한다.
+    /2fa/activate 가 호출되면 그때 비로소 DB 의 user.totp_secret 으로 이전.
+    활성화 미완료 시 자동 만료 — 설정 도중 이탈한 secret 이 DB 에 남지 않음.
+
+    같은 세션에서 setup 을 다시 호출하면 기존 pending 을 재사용 (새로고침 대응).
     """
     if user.totp_enabled:
         raise HTTPException(status_code=400, detail="이미 2FA 가 활성화되어 있습니다.")
-    secret = twofa.make_secret()
-    user.totp_secret = secret
-    user.totp_enabled = False
-    db.commit()
+    # 활성화 미완료된 옛 secret(DB)이 있으면 정리 — 이전 버전 호환
+    if user.totp_secret and not user.totp_enabled:
+        user.totp_secret = None
+        db.commit()
+    secret = twofa.peek_pending_secret(user.id) or twofa.make_secret()
+    twofa.stash_pending_secret(user.id, secret)
     uri = twofa.make_provisioning_uri(secret, user.username)
     return {
         "secret": secret,
@@ -162,14 +167,22 @@ def twofa_activate(
     user=Depends(auth.current_user),
     db: Session = Depends(get_db),
 ):
-    """2단계 — 인증기에서 받은 6자리 코드로 확인 후 활성화. 복구 코드 발급."""
+    """2단계 — 인증기 6자리 코드로 확인 + DB 에 비밀 저장 + 복구 코드 발급."""
     if user.totp_enabled:
         raise HTTPException(status_code=400, detail="이미 2FA 가 활성화되어 있습니다.")
-    if not user.totp_secret:
-        raise HTTPException(status_code=400, detail="먼저 /2fa/setup 으로 비밀을 발급받으세요.")
-    if not twofa.verify_code(user.totp_secret, payload.code):
+    secret = twofa.consume_pending_secret(user.id)
+    if not secret:
+        raise HTTPException(
+            status_code=400,
+            detail="비밀 발급이 만료되었습니다. /2fa/setup 부터 다시 시작해 주세요.",
+        )
+    if not twofa.verify_code(secret, payload.code):
+        # 다음 시도를 위해 secret 재보관 (TTL 갱신 X — 원본 만료 시간 유지하고 싶지만
+        # 사용성 우선해서 동일 secret 으로 다시 stash)
+        twofa.stash_pending_secret(user.id, secret)
         raise HTTPException(status_code=401, detail="인증 코드가 올바르지 않습니다.")
     recovery = twofa.generate_recovery_codes()
+    user.totp_secret = secret
     user.totp_enabled = True
     user.totp_recovery = twofa.hash_recovery_codes(recovery)
     db.commit()
@@ -194,6 +207,7 @@ def twofa_disable(
     user.totp_secret = None
     user.totp_recovery = None
     db.commit()
+    twofa.discard_pending_secret(user.id)  # 진행 중이던 재설정도 함께 정리
     audit.log(db, user, "auth.2fa.disabled", target_type="user", target_id=user.id)
     return {"ok": True}
 

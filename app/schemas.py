@@ -94,9 +94,14 @@ class CallRequest(BaseModel):
 
 
 class CallSignalRequest(BaseModel):
-    """WebRTC SDP / ICE candidate 전달용."""
+    """WebRTC SDP / ICE candidate 전달용.
+
+    인증: 익명 고객은 customer_token (통화 요청 시 발급된 1회용 토큰),
+          상담원은 세션 쿠키. 둘 중 하나라도 없으면 401.
+    """
     kind: str = Field(min_length=1, max_length=20)   # offer / answer / ice / hangup
     payload: dict = Field(default_factory=dict)
+    customer_token: str | None = Field(default=None, max_length=128)
 
 
 class CallEndRequest(BaseModel):
