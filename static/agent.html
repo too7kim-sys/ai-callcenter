@@ -1306,6 +1306,11 @@ function startSse() {
     _sse.addEventListener("conversation_created", refresh);
     _sse.addEventListener("conversation_updated", refresh);
     _sse.addEventListener("message_created", refresh);
+    // 끊김이 길어 링버퍼 손실이 있었음 — 전체 새로고침으로 상태 복구
+    _sse.addEventListener("stream_gap", () => {
+      loadList();
+      if (activeId) loadDetail(false);
+    });
     _sse.addEventListener("call_requested", (e) => {
       const data = JSON.parse(e.data || "{}");
       showIncomingCall(data);

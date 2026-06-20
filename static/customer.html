@@ -551,6 +551,8 @@ function startSse(convId) {
     };
     _sse.addEventListener("message_created", refresh);
     _sse.addEventListener("conversation_updated", refresh);
+    // 끊김이 링버퍼 한계를 넘어 일부 이벤트 손실 시 — 전체 상태 복구
+    _sse.addEventListener("stream_gap", refresh);
     _sse.addEventListener("call_answered", async (e) => {
       const data = JSON.parse(e.data || "{}");
       if (data.call_id === _callId) {

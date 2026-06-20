@@ -63,15 +63,23 @@ def publish(event: dict) -> None:
             pass
 
 
-def replay_since(last_id: int, filter_fn: Callable | None = None) -> list[dict]:
+def replay_since(last_id: int, filter_fn: Callable | None = None) -> tuple[list[dict], bool]:
     """Last-Event-ID 이후의 이벤트를 링버퍼에서 가져온다.
 
-    링버퍼가 작아 last_id 이전 일부가 이미 사라졌을 수 있음 — 그 경우 가능한
-    한 많은 이벤트만 반환. 호출자는 손실이 있음을 알 수 없지만 매우 잠시 끊긴
-    클라이언트는 100% 복구 (window: 최근 500개 이벤트).
+    반환: (events, gap)
+      events — replay 할 이벤트 목록
+      gap    — 링버퍼 한계로 일부 이벤트가 사라진 경우 True.
+               클라이언트는 gap=True 시 풀 리프레시 (목록 재조회) 권장.
     """
     with _history_lock:
         snapshot = list(_history)
+    if not snapshot:
+        return [], False
+    oldest_id = snapshot[0][0]
+    # 클라이언트가 요청한 last_id 가 가장 오래된 버퍼 ID 보다 작으면
+    # (last_id < oldest_id - 1) → 그 사이 이벤트가 링에서 빠져나갔다 = gap.
+    # last_id == oldest_id - 1 은 정상 (다음 이벤트가 oldest_id).
+    gap = last_id > 0 and last_id < oldest_id - 1
     out: list[dict] = []
     for eid, event in snapshot:
         if eid <= last_id:
@@ -79,7 +87,7 @@ def replay_since(last_id: int, filter_fn: Callable | None = None) -> list[dict]:
         if filter_fn is not None and not filter_fn(event):
             continue
         out.append(event)
-    return out
+    return out, gap
 
 
 def _safe_put(queue: asyncio.Queue, event: dict):

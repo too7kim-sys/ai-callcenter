@@ -68,8 +68,18 @@ async def stream_events(
 
         # 1) 끊김 동안 놓친 이벤트 replay
         if last_event_id > 0:
-            for missed in realtime.replay_since(last_event_id, filter_fn):
-                yield _format_sse(missed)
+            missed, gap = realtime.replay_since(last_event_id, filter_fn)
+            if gap:
+                # 링버퍼를 넘어선 끊김 — 클라이언트가 전체 상태 다시 가져오도록
+                # 특수 'stream_gap' 이벤트 전송. 도메인 이벤트와 다른 type 으로
+                # 명확히 구분, 페이로드에 last_event_id 와 oldest 정보 포함.
+                yield _format_sse({
+                    "type": "stream_gap",
+                    "last_event_id": last_event_id,
+                    "hint": "missed_events_due_to_buffer_size — please refetch state",
+                })
+            for ev in missed:
+                yield _format_sse(ev)
 
         # 2) 라이브 스트림
         try:
