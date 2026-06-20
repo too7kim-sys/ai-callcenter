@@ -28,6 +28,17 @@ router = APIRouter(prefix="/api", tags=["realtime"])
 _KEEPALIVE_INTERVAL = 15  # 초 — 프록시/브라우저 idle timeout 방지
 
 
+def _format_sse(event: dict) -> str:
+    ev_type = event.get("type", "message")
+    ev_id = event.get("id")
+    lines = []
+    if ev_id is not None:
+        lines.append(f"id: {ev_id}")
+    lines.append(f"event: {ev_type}")
+    lines.append(f"data: {json.dumps(event, ensure_ascii=False)}")
+    return "\n".join(lines) + "\n\n"
+
+
 @router.get("/events/stream")
 async def stream_events(
     request: Request,
@@ -41,19 +52,34 @@ async def stream_events(
         target = conversation_id  # closure 캡처
         filter_fn = lambda ev: ev.get("conversation_id") == target
 
+    # 클라이언트가 재연결 시 EventSource 가 자동으로 보내는 Last-Event-ID 헤더.
+    # 그 이후 발생한 이벤트를 링버퍼에서 즉시 replay → 중복·누락 차단.
+    last_event_id = 0
+    raw_header = request.headers.get("last-event-id", "")
+    if raw_header:
+        try:
+            last_event_id = int(raw_header.strip())
+        except ValueError:
+            last_event_id = 0
+
     async def event_stream():
         # 즉시 응답 시작 (브라우저 EventSource 의 onopen 트리거)
         yield ":connected\n\n"
+
+        # 1) 끊김 동안 놓친 이벤트 replay
+        if last_event_id > 0:
+            for missed in realtime.replay_since(last_event_id, filter_fn):
+                yield _format_sse(missed)
+
+        # 2) 라이브 스트림
         try:
             async for event in _merge_with_keepalive(realtime.subscribe(filter_fn)):
                 if await request.is_disconnected():
                     break
                 if event is None:
-                    # 키프어라이브 — SSE 주석 라인 (브라우저는 무시)
                     yield ":keepalive\n\n"
                     continue
-                ev_type = event.get("type", "message")
-                yield f"event: {ev_type}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+                yield _format_sse(event)
         except asyncio.CancelledError:
             pass
 

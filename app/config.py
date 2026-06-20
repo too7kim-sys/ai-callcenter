@@ -82,3 +82,11 @@ except ValueError:
     BIND_PORT = 8000
 TRUSTED_PROXY_IPS = os.getenv("TRUSTED_PROXY_IPS", "127.0.0.1").strip()
 ALLOWED_IPS = os.getenv("ALLOWED_IPS", "").strip()
+
+# 세션 쿠키 Secure 플래그 — HTTPS 환경에서만 쿠키 전송.
+# 값: true / false / auto (기본 auto — APP_BASE_URL 이 https:// 면 True)
+_cookie_secure_raw = os.getenv("COOKIE_SECURE", "auto").strip().lower()
+if _cookie_secure_raw == "auto":
+    COOKIE_SECURE = APP_BASE_URL.startswith("https://")
+else:
+    COOKIE_SECURE = _cookie_secure_raw in ("true", "1", "yes", "on")

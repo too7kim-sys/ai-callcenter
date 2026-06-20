@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
-from . import permissions, security
+from . import config, permissions, security
 from .database import SessionLocal, get_db
 from .models import AgentSession, AgentUser, Role, RolePermission
 
@@ -113,7 +113,9 @@ def set_session_cookie(response: Response, token: str):
         value=token,
         httponly=True,
         samesite="lax",
-        secure=False,  # 데모: HTTP 환경 호환. 운영(HTTPS)에서는 True로 변경.
+        # 운영(HTTPS) 환경에서는 .env 의 COOKIE_SECURE=true 로 설정.
+        # 'auto' 면 APP_BASE_URL 이 https:// 로 시작할 때 자동 True.
+        secure=config.COOKIE_SECURE,
         max_age=SESSION_TTL_HOURS * 3600,
         path="/",
     )

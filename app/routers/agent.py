@@ -376,6 +376,88 @@ def ip_allowlist_status(_user=Depends(auth.require_permission(P.AUDIT_VIEW))):
     return ip_allowlist.status()
 
 
+@router.get("/admin/conversations/pending-summary")
+def pending_summary_conversations(
+    days: int = 7,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    _user=Depends(auth.require_permission(P.AUDIT_VIEW)),
+):
+    """종료됐지만 자동 요약 실패/미완료인 상담 목록 — finalize 재시도 대상.
+
+    closed 상태 + summary IS NULL 인 상담을 최근 N일 안에서 수집.
+    """
+    from datetime import datetime, timedelta, timezone
+    days = max(1, min(90, int(days)))
+    limit = max(1, min(500, int(limit)))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = (
+        db.query(Conversation)
+          .filter(
+              Conversation.status == "closed",
+              Conversation.summary.is_(None),
+              Conversation.created_at >= since,
+          )
+          .order_by(Conversation.id.desc())
+          .limit(limit)
+          .all()
+    )
+    return {
+        "window_days": days,
+        "count": len(rows),
+        "conversations": [
+            {
+                "id": c.id,
+                "customer_name": c.customer_name,
+                "category": c.category,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+                "message_count": len(c.messages),
+            }
+            for c in rows
+        ],
+    }
+
+
+@router.post("/admin/conversations/finalize-pending")
+def retry_finalize_pending(
+    background: BackgroundTasks,
+    days: int = 7,
+    limit: int = 20,
+    user=Depends(auth.require_permission(P.CONV_ANALYZE)),
+    db: Session = Depends(get_db),
+):
+    """미완료 finalize 재시도 — 백그라운드로 일괄 처리.
+
+    상담 종료 시점에 AI 호출 실패로 요약/학습이 안 된 상담을 재처리.
+    한 번에 너무 많이 돌리면 AI 호출 폭주하므로 limit (기본 20) 제한.
+    """
+    from datetime import datetime, timedelta, timezone
+    days = max(1, min(90, int(days)))
+    limit = max(1, min(100, int(limit)))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    pending_ids = [
+        c.id for c in
+        db.query(Conversation.id)
+          .filter(
+              Conversation.status == "closed",
+              Conversation.summary.is_(None),
+              Conversation.created_at >= since,
+          )
+          .order_by(Conversation.id.desc())
+          .limit(limit)
+          .all()
+    ]
+    for cid in pending_ids:
+        background.add_task(finalize_conversation, cid)
+    audit.log(db, user, "conversation.finalize_retry",
+              details={"queued": len(pending_ids), "days": days})
+    return {
+        "queued": len(pending_ids),
+        "conversation_ids": pending_ids,
+    }
+
+
 @router.get("/security/anomaly")
 def anomaly_status(_user=Depends(auth.require_permission(P.AUDIT_VIEW))):
     """현재 의심 활동 추적 상태 (실패 로그인 / 다중 IP).

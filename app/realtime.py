@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from collections import deque
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
@@ -30,10 +31,27 @@ _lock = threading.Lock()
 # (queue, loop, filter_fn or None)
 _subscribers: list[tuple[asyncio.Queue, asyncio.AbstractEventLoop, Callable | None]] = []
 
+# 재연결 시 중복 차단을 위한 최근 이벤트 링버퍼.
+# 각 이벤트에 단조증가 id 부여 → SSE 의 'id:' 라인으로 전송.
+# 클라이언트가 끊겼다 재연결하면 Last-Event-ID 헤더로 마지막 id 를 보내고,
+# 서버는 그 이후 이벤트만 replay.
+_HISTORY_MAX = 500
+_history: deque[tuple[int, dict]] = deque(maxlen=_HISTORY_MAX)
+_history_lock = threading.Lock()
+_next_event_id = 0
+
 
 def publish(event: dict) -> None:
     """이벤트 발행 (sync / async 모두에서 호출 가능)."""
-    event = {**event, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    global _next_event_id
+    with _history_lock:
+        _next_event_id += 1
+        event_id = _next_event_id
+        event = {**event,
+                 "id": event_id,
+                 "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        _history.append((event_id, event))
+
     with _lock:
         subs = list(_subscribers)
     for queue, loop, filt in subs:
@@ -42,8 +60,26 @@ def publish(event: dict) -> None:
                 continue
             loop.call_soon_threadsafe(_safe_put, queue, event)
         except RuntimeError:
-            # 루프 종료됨 — 다음 정리 사이클에 제거됨
             pass
+
+
+def replay_since(last_id: int, filter_fn: Callable | None = None) -> list[dict]:
+    """Last-Event-ID 이후의 이벤트를 링버퍼에서 가져온다.
+
+    링버퍼가 작아 last_id 이전 일부가 이미 사라졌을 수 있음 — 그 경우 가능한
+    한 많은 이벤트만 반환. 호출자는 손실이 있음을 알 수 없지만 매우 잠시 끊긴
+    클라이언트는 100% 복구 (window: 최근 500개 이벤트).
+    """
+    with _history_lock:
+        snapshot = list(_history)
+    out: list[dict] = []
+    for eid, event in snapshot:
+        if eid <= last_id:
+            continue
+        if filter_fn is not None and not filter_fn(event):
+            continue
+        out.append(event)
+    return out
 
 
 def _safe_put(queue: asyncio.Queue, event: dict):

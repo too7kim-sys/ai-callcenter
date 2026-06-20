@@ -24,12 +24,18 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("ai_callcenter.main")
 
 
+# 마이그레이션 실패 추적 — /readyz 가 503 으로 알릴 수 있도록 노출.
+MIGRATION_FAILURES: list[str] = []
+
+
 def _ensure_columns():
     """기존 DB(이전 버전)에 새로 추가된 컬럼·인덱스가 없을 때만 ALTER/CREATE.
 
     SQLAlchemy `create_all` 은 누락된 테이블만 생성하고 기존 테이블의 컬럼·
     인덱스는 건드리지 않으므로, 모델 변경 시 기존 DB 는 호환되지 않는다.
     여기서는 SQLite 기준으로 가벼운 마이그레이션을 수행한다.
+
+    실패는 MIGRATION_FAILURES 에 기록되고 /readyz 가 503 으로 알린다.
     """
     from sqlalchemy import inspect, text
     insp = inspect(engine)
@@ -75,6 +81,7 @@ def _ensure_columns():
     }
     for table, cols in expected.items():
         if table not in insp.get_table_names():
+            MIGRATION_FAILURES.append(f"테이블 누락: {table}")
             continue
         existing = {c["name"] for c in insp.get_columns(table)}
         for name, ddl in cols:
@@ -84,8 +91,10 @@ def _ensure_columns():
                 with engine.begin() as conn:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
                 log.info("마이그레이션: %s.%s 컬럼 추가", table, name)
-            except Exception as e:  # 다른 DB 엔진 / 이미 추가됨 등
-                log.warning("마이그레이션 실패 (%s.%s): %s", table, name, e)
+            except Exception as e:  # 권한·잠금·다른 DB 엔진 등
+                msg = f"{table}.{name}: {e}"
+                MIGRATION_FAILURES.append(msg)
+                log.error("마이그레이션 실패 — %s", msg)
 
 
 Base.metadata.create_all(bind=engine)
@@ -168,14 +177,25 @@ def healthz():
 
 @app.get("/readyz")
 def readyz():
-    """Readiness — DB 까지 도달 가능해야 200, 아니면 503."""
+    """Readiness — DB ping + 마이그레이션 성공 여부 모두 통과해야 200."""
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
     except Exception as exc:
         return JSONResponse(
             status_code=503,
-            content={"status": "unready", "error": str(exc)[:200]},
+            content={"status": "unready", "reason": "db", "error": str(exc)[:200]},
+        )
+    if MIGRATION_FAILURES:
+        # 부분 마이그레이션 상태 — 컬럼 누락된 채 INSERT/UPDATE 가 나중에 터지는
+        # 것보다 readyz 503 으로 노출해 LB·운영자에게 즉시 알린다.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unready",
+                "reason": "migration",
+                "failures": MIGRATION_FAILURES[:20],
+            },
         )
     return {"status": "ready"}
 

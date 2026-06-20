@@ -26,23 +26,27 @@ def build_history(conv):
     return [{"role": m.role, "content": m.content} for m in conv.messages]
 
 
-def finalize_conversation(conversation_id: int, *, force_summary: bool = False):
+def finalize_conversation(conversation_id: int, *, force_summary: bool = False) -> dict:
     """상담 종료 후처리 — AI 자동 요약·분류 + RAG 학습.
 
     백그라운드 태스크용. 자체 DB 세션을 열어 본 요청 응답을 막지 않는다.
     AI 호출이 수 초 걸릴 수 있으나 사용자는 이미 종료 응답을 받은 뒤다.
 
-    실패해도 사용자에게 오류를 노출하지 않고 로그만 남긴다 — 상담 자체는
-    이미 닫혔으므로 후처리 실패가 상담 종료를 막아서는 안 된다.
+    실패는 audit log 에 'conversation.finalize_failed' 로 기록되어
+    /api/admin/conversations/pending-summary 와 finalize-pending 으로 가시화·
+    재시도 가능. 상담 종료 자체는 이미 끝났으므로 후처리 실패가 종료를 막진 않음.
+
+    반환: {summarized, learned, error?} — 호출자가 결과 확인 가능.
     """
-    from . import ai, knowledge
+    from . import ai, audit, knowledge
     from .database import SessionLocal
 
+    result_meta: dict = {"summarized": False, "learned": 0}
     db = SessionLocal()
     try:
         conv = db.get(Conversation, conversation_id)
         if conv is None:
-            return
+            return {"summarized": False, "learned": 0, "error": "conv_not_found"}
 
         # 1) 자동 요약·분류 (이미 분석된 상담은 skip, force_summary=True 면 강제)
         if force_summary or not conv.summary:
@@ -55,19 +59,37 @@ def finalize_conversation(conversation_id: int, *, force_summary: bool = False):
                 conv.updated_at = now()
                 db.commit()
                 logger.info("상담 #%s 자동 요약 완료 (source=%s)", conv.id, result.get("source"))
+                result_meta["summarized"] = True
             except Exception as exc:
                 db.rollback()
                 logger.warning("상담 #%s 자동 요약 실패: %s", conv.id, exc)
+                result_meta["error"] = str(exc)[:200]
+                # 실패를 영구 기록 — 관리자가 재시도 대상 식별 가능
+                try:
+                    audit.log(db, None, "conversation.finalize_failed",
+                              target_type="conversation", target_id=conv.id,
+                              details={"error": str(exc)[:300], "stage": "summarize"})
+                except Exception:
+                    pass
 
         # 2) RAG 학습 — 상담원 답변 쌍을 KnowledgeItem 에 적재
         try:
             learned = knowledge.learn_from_conversation(db, conv)
             logger.info("상담 #%s 자동 학습: %s 항목", conv.id, learned)
+            result_meta["learned"] = learned
         except Exception as exc:
             db.rollback()
             logger.warning("상담 #%s 자동 학습 실패: %s", conv.id, exc)
+            result_meta.setdefault("error", str(exc)[:200])
+            try:
+                audit.log(db, None, "conversation.finalize_failed",
+                          target_type="conversation", target_id=conv.id,
+                          details={"error": str(exc)[:300], "stage": "knowledge"})
+            except Exception:
+                pass
     finally:
         db.close()
+    return result_meta
 
 
 def _parse_list(value):
