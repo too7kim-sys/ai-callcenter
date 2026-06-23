@@ -15,8 +15,11 @@
 
 set -euo pipefail
 
-APP_USER=${APP_USER:-ai-callcenter}
+# APP_USER 미지정 시 워킹 디렉토리 소유자를 자동 감지 — 기존 ai-callcenter 든
+# cusoft 든 알아서 사용. 명시적으로 지정하면 그것을 우선.
 APP_DIR=${APP_DIR:-/data/projects/ai-callcenter}
+APP_USER=${APP_USER:-$(stat -c '%U' "$APP_DIR" 2>/dev/null || echo ai-callcenter)}
+APP_GROUP=${APP_GROUP:-$(stat -c '%G' "$APP_DIR" 2>/dev/null || echo "$APP_USER")}
 SERVICE=${SERVICE:-ai-callcenter}
 # APP_BRANCH 는 root 권한 검증 + safe.directory 등록 후에 자동 감지.
 APP_BRANCH=${APP_BRANCH:-}

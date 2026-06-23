@@ -23,6 +23,7 @@
 set -euo pipefail
 
 APP_USER=${APP_USER:-ai-callcenter}
+APP_GROUP=${APP_GROUP:-$APP_USER}
 APP_DIR=${APP_DIR:-/data/projects/ai-callcenter}
 APP_BRANCH=${APP_BRANCH:-}    # 비워두면 remote 기본 브랜치 자동 감지
 PYTHON=${PYTHON:-python3}
@@ -58,13 +59,21 @@ apt-get install -y --no-install-recommends \
 
 # ---------- 2. 사용자 + 디렉토리 ----------
 if ! id "$APP_USER" >/dev/null 2>&1; then
-    log "사용자 $APP_USER 생성"
+    log "사용자 $APP_USER 생성 (시스템 계정)"
     useradd --system --create-home --shell /usr/sbin/nologin "$APP_USER"
+else
+    log "기존 사용자 $APP_USER 사용 (생성 안 함)"
+fi
+# APP_GROUP 이 APP_USER 와 다르고 아직 없으면 생성 + 멤버 추가
+if [[ "$APP_GROUP" != "$APP_USER" ]] && ! getent group "$APP_GROUP" >/dev/null 2>&1; then
+    log "그룹 $APP_GROUP 생성"
+    groupadd --system "$APP_GROUP"
+    usermod -a -G "$APP_GROUP" "$APP_USER"
 fi
 
 mkdir -p "$APP_DIR"
 mkdir -p "$(dirname "$APP_DIR")"
-chown -R "$APP_USER:$APP_USER" "$(dirname "$APP_DIR")" 2>/dev/null || true
+chown -R "$APP_USER:$APP_GROUP" "$(dirname "$APP_DIR")" 2>/dev/null || true
 
 # ---------- 3. 소스 코드 ----------
 # git URL 결정 (인수 우선 → 현재 디렉토리의 origin)
@@ -78,7 +87,12 @@ fi
 # git 'detected dubious ownership' 회피 — root 와 APP_USER 양쪽에 등록.
 git config --global --add safe.directory "$APP_DIR" >/dev/null 2>&1 || true
 if id "$APP_USER" >/dev/null 2>&1; then
-    sudo -u "$APP_USER" -H git config --global --add safe.directory "$APP_DIR" >/dev/null 2>&1 || true
+    # ai-callcenter 처럼 nologin 셸인 시스템 계정도 sudo -u 로 git config 가능
+    sudo -u "$APP_USER" -H git config --global --add safe.directory "$APP_DIR" >/dev/null 2>&1 \
+      || (HOME_DIR=$(getent passwd "$APP_USER" | cut -d: -f6); \
+          mkdir -p "$HOME_DIR" 2>/dev/null; \
+          printf '[safe]\n\tdirectory = %s\n' "$APP_DIR" >> "$HOME_DIR/.gitconfig" 2>/dev/null; \
+          chown "$APP_USER:$APP_GROUP" "$HOME_DIR/.gitconfig" 2>/dev/null) || true
 fi
 
 # 기존 저장소가 있으면 그것의 현재 브랜치 사용, 아니면 remote 감지
@@ -150,11 +164,19 @@ else
 fi
 
 # ---------- 6. 디렉토리 권한 ----------
-chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
 
 # ---------- 7. systemd ----------
-log "systemd 유닛 설치"
-install -m 644 "$APP_DIR/deploy/ai-callcenter.service" /etc/systemd/system/ai-callcenter.service
+log "systemd 유닛 설치 (User=$APP_USER, Group=$APP_GROUP)"
+# 템플릿의 User=/Group= 라인을 실제 값으로 치환해 설치
+sed -e "s|^User=.*|User=$APP_USER|" \
+    -e "s|^Group=.*|Group=$APP_GROUP|" \
+    -e "s|^WorkingDirectory=.*|WorkingDirectory=$APP_DIR|" \
+    -e "s|^EnvironmentFile=.*|EnvironmentFile=$APP_DIR/.env|" \
+    -e "s|^ReadWritePaths=.*|ReadWritePaths=$APP_DIR|" \
+    "$APP_DIR/deploy/ai-callcenter.service" \
+  > /etc/systemd/system/ai-callcenter.service
+chmod 644 /etc/systemd/system/ai-callcenter.service
 systemctl daemon-reload
 systemctl enable --quiet ai-callcenter
 systemctl restart ai-callcenter
