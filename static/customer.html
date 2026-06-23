@@ -453,13 +453,36 @@ function renderConversation(conv) {
 }
 
 async function startChat() {
+  const startBtn = $("start-btn");
+  startBtn.disabled = true;
   const name = $("name-input").value.trim() || "고객";
-  const res = await fetch(API + "/api/conversations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ customer_name: name }),
-  });
-  const conv = await res.json();
+  let conv;
+  try {
+    const res = await fetch(API + "/api/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_name: name }),
+    });
+    if (!res.ok) {
+      // 흔한 원인: 429 (IP 당 5/분 rate limit) → 명확히 안내하고 다시 시도 가능
+      const err = await res.json().catch(() => ({}));
+      const msg = res.status === 429
+        ? "요청이 잠시 많아 상담을 시작할 수 없습니다. 1분 후 다시 시도해 주세요."
+        : (err.detail || `상담 시작에 실패했습니다 (HTTP ${res.status}).`);
+      alert(msg);
+      return;
+    }
+    conv = await res.json();
+  } catch (e) {
+    alert("서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+    return;
+  } finally {
+    startBtn.disabled = false;
+  }
+  if (!conv || !conv.id) {
+    alert("상담을 시작하지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+    return;
+  }
   conversationId = conv.id;
   $("start-view").style.display = "none";
   $("messages").style.display = "flex";
@@ -481,8 +504,15 @@ async function startChat() {
 async function sendMessage() {
   const input = $("msg-input");
   const text = input.value.trim();
-  if (!text || !conversationId) return;
-
+  if (!text) return;
+  if (!conversationId) {
+    // 시작 단계가 실패해 conversationId 가 없는 비정상 상태 — 사용자 안내
+    const err = document.createElement("div");
+    err.className = "notice";
+    err.textContent = "상담이 시작되지 않았습니다. 페이지를 새로고침 후 다시 시도해 주세요.";
+    $("messages").appendChild(err);
+    return;
+  }
   if (sending) return; // 이미 전송 중이면 중복 무시
   input.value = "";
   $("send-btn").disabled = true;
