@@ -44,6 +44,11 @@ def create_user(
     role = (payload.role or permissions.ROLE_AGENT).strip().lower()
     if db.query(Role).filter(Role.name == role).first() is None:
         raise HTTPException(status_code=400, detail="존재하지 않는 역할입니다.")
+    policy_err = security.validate_password_strength(
+        payload.password, username=username, email=payload.email,
+    )
+    if policy_err:
+        raise HTTPException(status_code=400, detail=policy_err)
     user = AgentUser(
         username=username,
         name=payload.name.strip(),
@@ -108,6 +113,11 @@ def admin_reset_password(
     user = db.get(AgentUser, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    policy_err = security.validate_password_strength(
+        payload.new_password, username=user.username, email=user.email,
+    )
+    if policy_err:
+        raise HTTPException(status_code=400, detail=policy_err)
     user.password_hash = security.hash_password(payload.new_password)
     user.failed_login_count = 0
     user.locked_until = None

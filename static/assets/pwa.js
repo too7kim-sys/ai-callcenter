@@ -1,7 +1,40 @@
-// PWA 부팅 — 서비스 워커 등록 + manifest 링크 자동 삽입 + 설치 프롬프트.
+// PWA 부팅 — 서비스 워커 등록 + manifest 링크 자동 삽입 + 설치 프롬프트
+//          + CSRF Double-Submit Cookie 자동 첨부 (fetch 가로채기).
 // 모든 주요 페이지에서 <script src="/assets/pwa.js" defer></script> 한 줄로 활성화.
 
 (function () {
+  // ---------- CSRF — 상태 변경 요청에 X-CSRF-Token 헤더 자동 첨부 ----------
+  // 서버 미들웨어가 _csrf_token 쿠키와 X-CSRF-Token 헤더 일치 검증.
+  // 쿠키는 서버가 발급(HttpOnly X). 여기선 쿠키 값을 읽어 헤더로 첨부.
+  function _readCookie(name) {
+    const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  const _origFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (_origFetch) {
+    window.fetch = function (input, init) {
+      try {
+        const req = (typeof input === "string" || input instanceof URL)
+          ? new Request(input, init) : input;
+        const method = (init && init.method || req.method || "GET").toUpperCase();
+        if (!["GET","HEAD","OPTIONS"].includes(method)) {
+          const tok = _readCookie("_csrf_token");
+          if (tok) {
+            init = init || {};
+            const headers = new Headers(init.headers || req.headers || {});
+            if (!headers.has("X-CSRF-Token")) headers.set("X-CSRF-Token", tok);
+            init.headers = headers;
+            // 원본이 Request 객체라면 method/body 도 같이 전달
+            if (!(typeof input === "string" || input instanceof URL)) {
+              return _origFetch(new Request(req, init));
+            }
+          }
+        }
+      } catch (e) { /* fallback to original fetch */ }
+      return _origFetch(input, init);
+    };
+  }
+
   // 매니페스트 / theme-color / apple-touch-icon 자동 삽입 (페이지마다 중복 입력 방지)
   function injectHead() {
     const head = document.head;

@@ -318,6 +318,38 @@ def update_faq(
 _MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25MB
 _ALLOWED_AUDIO = {".wav", ".mp3", ".m4a", ".mp4", ".ogg", ".flac", ".webm"}
 
+# 알려진 오디오 형식의 magic number (파일 시작 부분).
+# 확장자 검증만으론 .wav 로 위장한 임의 파일 → ffmpeg 파싱 버그 표면이 됨.
+# 모든 매처 함수는 (bytes) -> bool.
+def _looks_like_audio(data: bytes) -> bool:
+    if len(data) < 12:
+        return False
+    head = data[:16]
+    # RIFF....WAVE — WAV
+    if head[:4] == b"RIFF" and head[8:12] == b"WAVE":
+        return True
+    # ID3 시작의 MP3, 또는 0xFFE0~0xFFFB (MPEG audio frame sync)
+    if head[:3] == b"ID3":
+        return True
+    if head[0] == 0xFF and (head[1] & 0xE0) == 0xE0:
+        return True
+    # OggS — Ogg / Opus
+    if head[:4] == b"OggS":
+        return True
+    # fLaC — FLAC
+    if head[:4] == b"fLaC":
+        return True
+    # ftyp...M4A/M4B/MP4 (MOV/MP4 ISO BMFF) — 0x04..0x08 위치에 'ftyp'
+    if head[4:8] == b"ftyp":
+        brand = head[8:12]
+        if brand in (b"M4A ", b"M4B ", b"mp42", b"isom", b"M4P ",
+                     b"M4V ", b"qt  ", b"dash"):
+            return True
+    # WebM / Matroska — EBML signature
+    if head[:4] == b"\x1aE\xdf\xa3":
+        return True
+    return False
+
 
 @router.get("/alerts/status")
 def alerts_status(_user=Depends(auth.require_permission(P.AUDIT_VIEW))):
@@ -505,6 +537,13 @@ async def transcribe_voice(
         raise HTTPException(status_code=400, detail="빈 파일입니다.")
     if len(content) > _MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="파일이 너무 큽니다 (25MB 이하).")
+    # magic number 검증 — 확장자 위조 + 폴리글롯 차단.
+    # 확장자만 .wav 로 바꿔도 ffmpeg/whisper 가 파일을 파싱하므로 잠재적 RCE 표면 축소.
+    if not _looks_like_audio(content):
+        raise HTTPException(
+            status_code=400,
+            detail="파일이 알려진 오디오 형식이 아닙니다 (확장자 위조 의심).",
+        )
 
     tmp = tempfile.NamedTemporaryFile(suffix=suffix or ".wav", delete=False)
     try:

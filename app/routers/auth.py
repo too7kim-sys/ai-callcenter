@@ -223,6 +223,11 @@ def change_password(
         raise HTTPException(status_code=401, detail="현재 비밀번호가 올바르지 않습니다.")
     if payload.new_password == payload.current_password:
         raise HTTPException(status_code=400, detail="기존 비밀번호와 다른 비밀번호를 사용해 주세요.")
+    policy_err = security.validate_password_strength(
+        payload.new_password, username=user.username, email=user.email,
+    )
+    if policy_err:
+        raise HTTPException(status_code=400, detail=policy_err)
     user.password_hash = security.hash_password(payload.new_password)
     db.commit()
     auth.delete_user_sessions(db, user.id)

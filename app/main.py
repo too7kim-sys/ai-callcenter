@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 import time
 
-from . import accounts, ai, auth, backup, config, faq, ip_allowlist, metrics
+from . import accounts, ai, auth, backup, config, csrf, faq, ip_allowlist, metrics
 from .database import Base, engine
 from .security_headers import SecurityHeadersMiddleware
 from .routers import agent, callback, calls, categories, chat, evaluations, experiments, password
@@ -114,6 +114,8 @@ app = FastAPI(title="AI 콜센터", version="1.0.0")
 # IpAllowlist 를 가장 앞단(가장 먼저 실행)에 두려면 가장 마지막에 add.
 # 현재 순서: 응답 시 SecurityHeaders 적용 → 요청 시 metrics → 요청 시 IpAllowlist 차단
 app.add_middleware(SecurityHeadersMiddleware)
+# CSRF — Double-Submit Cookie 패턴. SafeMethods/익명 엔드포인트는 우회.
+app.add_middleware(csrf.CsrfMiddleware)
 # IP 화이트리스트 — 모든 핸들러보다 먼저 실행되도록 마지막에 add
 app.add_middleware(ip_allowlist.IpAllowlistMiddleware)
 

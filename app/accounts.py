@@ -12,7 +12,9 @@ from email.message import EmailMessage
 from . import config
 from .database import SessionLocal
 from .models import Account, PasswordResetToken
-from .security import generate_token, hash_password, verify_password  # noqa: F401
+from .security import (  # noqa: F401
+    generate_token, hash_password, verify_password, validate_password_strength,
+)
 
 logger = logging.getLogger("ai_callcenter.accounts")
 
@@ -129,6 +131,11 @@ def confirm_reset(db, token, new_password):
     account = db.get(Account, record.account_id)
     if account is None:
         return {"ok": False, "message": "계정을 찾을 수 없습니다."}
+    policy_err = validate_password_strength(
+        new_password, username=account.username, email=account.email,
+    )
+    if policy_err:
+        return {"ok": False, "message": policy_err}
     account.password_hash = hash_password(new_password)
     record.used = True
     db.commit()

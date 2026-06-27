@@ -197,13 +197,49 @@ def seed_admin():
         )
         db.add(user)
         db.commit()
+        # 비밀번호를 systemd journal 에 평문 기록하지 않는다 — 시스템 로그가
+        # 노출되면 관리자 탈취 위험. 별도 파일(권한 600) 에 1회 기록.
+        _write_initial_admin_secret(password)
         logger.info(
-            "초기 admin 계정을 생성했습니다 (username=admin, password=%s). "
-            "로그인 직후 비밀번호를 변경해 주세요.",
-            password,
+            "초기 admin 계정을 생성했습니다 (username=admin). "
+            "비밀번호는 %s 에 1회만 기록됩니다. 로그인 직후 변경해 주세요.",
+            _INITIAL_ADMIN_SECRET_PATH,
         )
     finally:
         db.close()
+
+
+_INITIAL_ADMIN_SECRET_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    ".initial-admin-password",
+)
+
+
+def _write_initial_admin_secret(password: str) -> None:
+    """초기 admin 비번을 권한 0600 파일로 1회 기록."""
+    try:
+        # O_WRONLY|O_CREAT|O_EXCL — 이미 존재하면 덮어쓰지 않음 (재시드 보호)
+        fd = os.open(_INITIAL_ADMIN_SECRET_PATH,
+                     os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            os.write(fd, (
+                "AI 콜센터 — 초기 admin 비밀번호\n"
+                "\n"
+                "username: admin\n"
+                f"password: {password}\n"
+                "\n"
+                "1) 로그인 후 즉시 /security 에서 비밀번호 변경\n"
+                "2) 변경 완료 후 이 파일 삭제: rm " + _INITIAL_ADMIN_SECRET_PATH + "\n"
+            ).encode("utf-8"))
+        finally:
+            os.close(fd)
+    except FileExistsError:
+        logger.info("초기 비밀번호 파일이 이미 존재 — 변경하지 않음: %s", _INITIAL_ADMIN_SECRET_PATH)
+    except OSError as e:
+        # 파일 작성 실패 시에만 로그에 직접 기록 (최후의 폴백) — 운영 환경에선
+        # 디스크 권한 문제 등 매우 드문 케이스.
+        logger.warning("초기 비밀번호 파일 작성 실패 (%s) — 로그로 폴백", e)
+        logger.warning("초기 admin 비밀번호 (1회 표시): %s", password)
 
 
 def seed_roles():

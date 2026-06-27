@@ -5,6 +5,7 @@ __pycache__/
 venv/
 env/
 .env
+.initial-admin-password
 *.db
 *.sqlite3
 .DS_Store
