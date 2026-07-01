@@ -20,7 +20,10 @@ logger = logging.getLogger("ai_callcenter.auth")
 SESSION_COOKIE_NAME = "ai_callcenter_session"
 SESSION_TTL_HOURS = 8
 MAX_FAILED_LOGINS = 5
-LOCKOUT_MINUTES = 15
+# 잠금 시간이 실패 반복마다 지수적으로 증가 (분산 브루트포스 대응).
+# 실패 5회 → 5분, 10회 → 10분, 15회 → 20분, 20회 → 40분, 25회 → 80분, …
+LOCKOUT_BASE_MINUTES = 5
+LOCKOUT_MAX_MINUTES = 24 * 60  # 상한 24시간 — 정당한 사용자 복구 가능성 유지
 
 ROLE_ADMIN = "admin"
 ROLE_AGENT = "agent"
@@ -62,13 +65,25 @@ def authenticate(db: Session, username: str, password: str):
     if not security.verify_password(password or "", user.password_hash or ""):
         user.failed_login_count = (user.failed_login_count or 0) + 1
         if user.failed_login_count >= MAX_FAILED_LOGINS:
-            user.locked_until = _now() + timedelta(minutes=LOCKOUT_MINUTES)
+            # 잠금 시간을 지수적으로 증가: base * 2^(lockout_count)
+            # 5회 → 5분, 10회 → 10분, 15회 → 20분, 20회 → 40분, 25회 → 80분, …
+            level = user.lockout_count or 0
+            minutes = min(LOCKOUT_BASE_MINUTES * (2 ** level), LOCKOUT_MAX_MINUTES)
+            user.locked_until = _now() + timedelta(minutes=minutes)
+            user.lockout_count = level + 1
             user.failed_login_count = 0
-            logger.warning("계정 잠금: username=%s", user.username)
+            logger.warning(
+                "계정 잠금: username=%s minutes=%d lockout_count=%d",
+                user.username, minutes, user.lockout_count,
+            )
         db.commit()
         return None, "invalid"
     user.failed_login_count = 0
     user.locked_until = None
+    # 성공 시 lockout_count 를 서서히 감소 (선의의 사용자 복구):
+    # 성공 로그인마다 -1, 최소 0.
+    if (user.lockout_count or 0) > 0:
+        user.lockout_count -= 1
     user.last_login_at = _now()
     db.commit()
     return user, None

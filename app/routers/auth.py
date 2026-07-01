@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
-from .. import anomaly, audit, auth, permissions, ratelimit, security, twofa
+from .. import anomaly, audit, auth, csrf, permissions, ratelimit, security, twofa
 from ..database import get_db
 from ..models import AgentUser
 from ..schemas import (
@@ -61,6 +61,7 @@ def login(
 
     token = auth.create_session(db, user, request)
     auth.set_session_cookie(response, token)
+    csrf.rotate_csrf_cookie(response)  # 세션 고정 방어 — 로그인 성공 시 CSRF 도 회전
     anomaly.on_login_success(db, user, ip)
     return _user_payload(user)
 
@@ -109,6 +110,7 @@ def twofa_verify(
 
     token = auth.create_session(db, user, request)
     auth.set_session_cookie(response, token)
+    csrf.rotate_csrf_cookie(response)  # 세션 고정 방어 — 로그인 성공 시 CSRF 도 회전
     anomaly.on_login_success(db, user, ip)
     if used_recovery:
         audit.log(db, user, "auth.2fa.recovery_used",
@@ -120,6 +122,7 @@ def twofa_verify(
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     auth.delete_session(db, request.cookies.get(auth.SESSION_COOKIE_NAME))
     auth.clear_session_cookie(response)
+    csrf.rotate_csrf_cookie(response)
     return {"ok": True}
 
 

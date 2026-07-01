@@ -1,13 +1,18 @@
-fastapi>=0.110
-uvicorn[standard]>=0.29
-sqlalchemy>=2.0
-anthropic>=0.40
-python-dotenv>=1.0
-python-multipart>=0.0.6
-# 선택: 음성 파일 학습(STT)에 사용. 미설치 시 음성 업로드 기능만 비활성화.
-faster-whisper>=1.0.0
+# 코어 웹 프레임워크 — major 상한선으로 breaking 변경 차단.
+# 업그레이드는 CHANGELOG 확인 + 회귀 테스트 후 상한선 조정.
+fastapi>=0.110,<0.120
+uvicorn[standard]>=0.29,<0.40
+sqlalchemy>=2.0,<2.1
+anthropic>=0.40,<1.0
+python-dotenv>=1.0,<2.0
+python-multipart>=0.0.6,<1.0
+
+# 선택: 음성 파일 학습(STT). 미설치 시 음성 업로드 기능만 비활성화.
+faster-whisper>=1.0.0,<2.0
+
 # 선택: AI 음성 응답(TTS). 미설치 시 espeak-ng(시스템) 폴백, 둘 다 없으면 비활성.
-edge-tts>=7.0.0
+edge-tts>=7.0.0,<8.0
+
 # 2FA (TOTP) — Google Authenticator/Authy 호환. QR 코드 인라인 SVG 생성.
-pyotp>=2.9.0
-qrcode>=7.4.0
+pyotp>=2.9.0,<3.0
+qrcode>=7.4.0,<9.0

@@ -54,6 +54,21 @@ def _new_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def rotate_csrf_cookie(response) -> None:
+    """로그인/로그아웃 성공 시 CSRF 쿠키 회전 — 세션 고정 방어.
+
+    공격자가 미리 심어둔 CSRF 값을 알고 있어도, 로그인 직후 무효화됨.
+    """
+    response.set_cookie(
+        key=CSRF_COOKIE,
+        value=_new_token(),
+        httponly=False,
+        samesite="lax",
+        path="/",
+        max_age=86400 * 30,
+    )
+
+
 class CsrfMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         method = request.method.upper()

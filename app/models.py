@@ -164,6 +164,7 @@ class AgentUser(Base):
     role = Column(String, default="agent")  # admin / agent
     active = Column(Boolean, default=True)
     failed_login_count = Column(Integer, default=0)
+    lockout_count = Column(Integer, default=0)  # 누적 잠금 발생 횟수 (지수 백오프 계산용)
     locked_until = Column(DateTime, nullable=True)
     last_login_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_now)

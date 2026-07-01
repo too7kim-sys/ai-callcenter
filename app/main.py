@@ -74,6 +74,7 @@ def _ensure_columns():
             ("totp_secret", "VARCHAR"),
             ("totp_enabled", "BOOLEAN DEFAULT 0"),
             ("totp_recovery", "TEXT"),
+            ("lockout_count", "INTEGER DEFAULT 0"),
         ],
         "calls": [
             ("customer_token", "VARCHAR"),

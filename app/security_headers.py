@@ -50,6 +50,10 @@ _COMMON_HEADERS = {
         "camera=(), geolocation=(), payment=(), usb=(), "
         "microphone=(self), accelerometer=(), gyroscope=()"
     ),
+    # 강화 헤더 — 브라우저 격리 + 캐시 오염 차단
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-site",
+    "X-Permitted-Cross-Domain-Policies": "none",
 }
 
 
@@ -71,11 +75,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         for k, v in _COMMON_HEADERS.items():
             response.headers.setdefault(k, v)
 
-        # HSTS — HTTPS 요청에만 (HTTP 에 설정하면 의미 없고 일부 검사기는 경고)
+        # HSTS + preload — HTTPS 요청에만.
+        # preload 는 브라우저 preload 리스트 신청 시 필수 — 도메인이 만족하는지
+        # 운영자가 결정 후 등록. 헤더만 설정해도 무해.
         if request.url.scheme == "https":
             response.headers.setdefault(
                 "Strict-Transport-Security",
-                "max-age=31536000; includeSubDomains",
+                "max-age=31536000; includeSubDomains; preload",
             )
+
+        # API 응답은 브라우저·프록시 캐시 금지 — 로그인/대시보드/개인정보 응답이
+        # 공유 캐시에 남아 다음 사용자에게 노출되는 사고 차단.
+        # 정적 자산(/assets)은 명시적으로 캐시 정책 있으므로 영향 X.
+        if path.startswith("/api/") and not path.startswith("/api/events/stream"):
+            response.headers.setdefault(
+                "Cache-Control",
+                "no-store, no-cache, must-revalidate, private",
+            )
+            response.headers.setdefault("Pragma", "no-cache")
 
         return response
