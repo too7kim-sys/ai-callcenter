@@ -108,6 +108,13 @@ class IpAllowlistMiddleware(BaseHTTPMiddleware):
             "IP 차단 ip=%s method=%s path=%s",
             client, request.method, request.url.path,
         )
+        # 감사 로그 — 반복적 차단 IP 는 관리자가 검토 후 방화벽에 추가하도록
+        from . import audit
+        audit.log_middleware(
+            "security.ip_blocked",
+            target_type="ip", target_id=client[:100],
+            details={"method": request.method, "path": request.url.path[:200]},
+        )
         return JSONResponse(
             status_code=403,
             content={"detail": "이 IP 에서는 접근할 수 없습니다."},

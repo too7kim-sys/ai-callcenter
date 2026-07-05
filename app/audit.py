@@ -10,6 +10,39 @@ from .models import AuditLog
 logger = logging.getLogger("ai_callcenter.audit")
 
 
+def log_middleware(
+    action: str,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    details: dict | None = None,
+):
+    """DB 세션 없이 호출 가능한 미들웨어용 audit 기록.
+
+    자체 SessionLocal 을 열어 1건 기록 후 닫는다. 실패해도 요청 흐름에 영향 X.
+    미들웨어(CSRF/IpAllowlist 차단 등) 에서만 사용 — 라우터에서는 log() 를 씀.
+    """
+    from .database import SessionLocal
+    db = SessionLocal()
+    try:
+        row = AuditLog(
+            actor_id=None,
+            actor_name="system",
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details=json.dumps(details, ensure_ascii=False) if details else None,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(row)
+        db.commit()
+    except Exception as exc:
+        logger.warning("audit log (middleware) 기록 실패: %s", exc)
+        try: db.rollback()
+        except Exception: pass
+    finally:
+        db.close()
+
+
 def log(
     db: Session,
     actor,

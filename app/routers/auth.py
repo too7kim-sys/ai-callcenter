@@ -39,7 +39,13 @@ def login(
     ip = ratelimit.client_ip(request)
     user, reason = auth.authenticate(db, payload.username, payload.password)
     if user is None:
-        # 실패는 의심 활동 감지로 추적 (locked/inactive 도 invalid 시도일 수 있음)
+        # 실패는 의심 활동 감지 + 감사 로그 양쪽에 기록. 관리자가 /audit 에서
+        # 시간 범위 검색 가능. anomaly 는 알림·통계, audit 는 영구 이력.
+        audit.log(
+            db, None, f"auth.login.{reason}",
+            target_type="username", target_id=(payload.username or "")[:60],
+            details={"ip": ip, "stage": "password"},
+        )
         if reason == "invalid":
             anomaly.on_failed_login(db, ip, payload.username, stage="password")
         if reason == "locked":
@@ -63,6 +69,8 @@ def login(
     auth.set_session_cookie(response, token)
     csrf.rotate_csrf_cookie(response)  # 세션 고정 방어 — 로그인 성공 시 CSRF 도 회전
     anomaly.on_login_success(db, user, ip)
+    audit.log(db, user, "auth.login.success", target_type="user", target_id=user.id,
+              details={"ip": ip})
     return _user_payload(user)
 
 
@@ -100,6 +108,9 @@ def twofa_verify(
     ip = ratelimit.client_ip(request)
     if not ok:
         anomaly.on_failed_login(db, ip, user.username, stage="2fa")
+        audit.log(db, user, "auth.2fa.invalid_code",
+                  target_type="user", target_id=user.id,
+                  details={"ip": ip, "code_type": "recovery" if len(code) == 9 and "-" in code else "totp"})
         # 새 임시 토큰 재발급 — 무차별 대입 차단을 위해 동일 토큰 재사용 X
         new_token = twofa.issue_pending_token(user.id)
         raise HTTPException(

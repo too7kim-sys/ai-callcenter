@@ -84,6 +84,16 @@ class CsrfMiddleware(BaseHTTPMiddleware):
             if not cookie_tok or not header_tok or not secrets.compare_digest(cookie_tok, header_tok):
                 logger.info("CSRF 차단 method=%s path=%s cookie=%s header=%s",
                             method, path, bool(cookie_tok), bool(header_tok))
+                # 감사 로그 — 관리자가 /audit 에서 조회 가능
+                from . import audit
+                from .ratelimit import client_ip
+                audit.log_middleware(
+                    "security.csrf_block",
+                    target_type="path", target_id=path[:200],
+                    details={"method": method, "ip": client_ip(request),
+                             "cookie_present": bool(cookie_tok),
+                             "header_present": bool(header_tok)},
+                )
                 return JSONResponse(
                     status_code=403,
                     content={"detail": "CSRF 토큰이 누락되었거나 일치하지 않습니다."},

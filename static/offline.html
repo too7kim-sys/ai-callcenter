@@ -31,7 +31,8 @@
   <h1>오프라인 상태입니다</h1>
   <p>네트워크 연결을 확인한 뒤 다시 시도해 주세요.<br>
      PWA 로 설치된 콜센터의 UI 셸은 캐시에서 로드됐습니다.</p>
-  <button onclick="location.reload()">다시 시도</button>
+  <button id="retry-btn">다시 시도</button>
 </div>
+<script>document.getElementById("retry-btn").addEventListener("click",function(){location.reload();});</script>
 </body>
 </html>
